@@ -1,21 +1,26 @@
 #TODO 
 #- actions compatible
+#  - GitHubActions module ( https://github.com/ebekker/pwsh-github-action-base)
+#     - options: https://github.com/ebekker/pwsh-github-action-tools/blob/master/docs/GitHubActions/README.md
+#  - optional fail vs warn via parameter
+#  - Annotations - https://github.com/actions/toolkit/tree/main/packages/core#annotations
+#     - warning message - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-a-warning-message
+#  - test Get-ActionRepo vs params
 #- error handling for failing apis (404 when not authorized, etc)
 #- output current state of alert (if it was bypassed pp)
 #- filter out alerts that are before the first commit of the PR
-#- graphQL instead of iterating over rest api
+#- graphQL instead of iterating over rest api / or parallel api calls
+#- step debug logs == verbose mode (pwsh-github-action-tools support this?)
 
-param( 
-    [string]$OrganizationName,
-    [string]$RepositoryName,
-    [int64]$PullRequestNumber
-)
+
+
+param()
 
 ###DEBUG MODE
 $VerbosePreference = 'Continue'
-$OrganizationName = 'octodemo'
-$RepositoryName = 'demo-vulnerabilities-ghas'
-$PullRequestNumber = 120
+
+$env:GITHUB_REPOSITORY = 'octodemo/demo-vulnerabilities-ghas'
+$env:GITHUB_REF = 'refs/pull/120/merge'
 ####
 
 #check if PowerShellForGitHub module is installed
@@ -28,6 +33,18 @@ else
     Write-Host "PowerShellForGitHub module is not installed"
     Install-Module -Name PowerShellForGitHub
 }
+
+#check if GitHubActions module is installed
+if (Get-Module -ListAvailable -Name GitHubActions -ErrorAction SilentlyContinue)
+{
+    Write-Verbose "GitHubActions module is installed"
+}
+else
+{
+    Write-Host "GitHubActions module is not installed"
+    Install-Module -Name GitHubActions
+}
+
 
 #check if GITHUB_TOKEN is set
 if ($null -eq $env:GITHUB_TOKEN)
@@ -50,6 +67,22 @@ $cred = New-Object System.Management.Automation.PSCredential "username is ignore
 Set-GitHubAuthentication -Credential $cred
 $secureString = $null # clear this out now that it's no longer needed
 $cred = $null # clear this out now that it's no longer needed
+
+
+#Init Owner/Repo/PR variables+
+$actionRepo = Get-ActionRepo
+$OrganizationName = $actionRepo.Owner
+$RepositoryName = $actionRepo.Repo
+
+#get the pull request number from the GITHUB_REF environment variable
+if ($env:GITHUB_REF -match 'refs/pull/([0-9]+)')
+{
+    $PullRequestNumber = $matches[1]
+}
+else
+{
+    Set-ActionFailed -Message "GITHUB_REF is not set to a pull request number"    
+}
 
 #Default Org / Repo for all GH api calls
 Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryName $RepositoryName
@@ -140,11 +173,19 @@ foreach ($alert in $alerts) {
 
 #Clear progress bar and finish
 Write-Progress -Activity "Secret Scanning Alert Search" -Completed
-Write-Host "Found $($alertsInitiatedFromPr.count) secret scanning alert(s) that originated from a PR#$PullRequestNumber commit"
 
 #output the alert url for each alert that was found
 foreach ($alert in $alertsInitiatedFromPr) {
     foreach($location in $alert.locations) {
         Write-Host "[+] Alert: $($alert.html_url) at Path: '$($location.details.path)' (commit sha: $($location.details.commit_sha))"
+        Write-ActionWarning -Message "[+] Alert: $($alert.html_url) (commit sha: $($location.details.commit_sha))" -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
     }  
+}
+
+#if any alerts were found, exit with error code 1
+if($alertsInitiatedFromPr.Count -gt 0) {
+    Set-ActionFailed -Message "Found $($alertsInitiatedFromPr.count) secret scanning alert(s) that originated from a PR#$PullRequestNumber commit"
+}
+else {
+    exit 0
 }
