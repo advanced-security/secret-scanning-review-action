@@ -1,37 +1,53 @@
-#DONE
-#  - optional to fail via parameter (even if alert is resolved)
-#  - progress bar
+<#
+.SYNOPSIS
+Action to detect if a Secret Scanning alert is initially detected in a PR commit
 
-#TODO 
-#- actions compatible
-#  - GitHubActions module ( https://github.com/ebekker/pwsh-github-action-base)
-#     - options: https://github.com/ebekker/pwsh-github-action-tools/blob/master/docs/GitHubActions/README.md
-#  - Annotations - https://github.com/actions/toolkit/tree/main/packages/core#annotations
-#     - warning message - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-a-warning-message
-#- Features
-#   - error handling for failing apis (404 when not authorized, etc)
-#   - output current state of alert (if it was bypassed pp)
-#   - filter out alerts that are before the first commit of the PR
-#   - graphQL instead of iterating over rest api / or parallel api calls
-#   - support step debug logs == verbose mode (pwsh-github-action-tools support this?)
-#   - option to not fail workflow
-#      - if offending alert is in resolved state, then it is not a failure
-#      - whitelist of secret types (https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security)
-#- Docs
-#   - ReadMe + architecture
-#   - Powershell proper comments
+.DESCRIPTION
+Features:
+- optional to fail via parameter (even if alert is resolved)
 
+Requirements:
+- GITHUB_TOKEN with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+
+.EXAMPLE
+PS>$VerbosePreference = 'Continue'
+PS>$env:GITHUB_TOKEN = "<get a token from github>"    
+PS>$env:GITHUB_REPOSITORY = 'octodemo/demo-vulnerabilities-ghas'
+PS>$env:GITHUB_REF = 'refs/pull/120/merge'
+PS> action.ps1
+
+A simple example execution of the internal pwsh script against an Owner/Repo and Pull Request outside of GitHub Action context
+
+.PARAMETER FailOnAlert
+        If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found.
+
+.NOTES
+TODO LIST 
+- actions compatible
+  - GitHubActions module ( https://github.com/ebekker/pwsh-github-action-base)
+     - options: https://github.com/ebekker/pwsh-github-action-tools/blob/master/docs/GitHubActions/README.md
+  - Annotations - https://github.com/actions/toolkit/tree/main/packages/core#annotations
+     - warning message - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-a-warning-message
+- Features
+   - error handling for failing apis (404 when not authorized, etc)
+   - output current state of alert (if it was bypassed pp)
+   - filter out alerts that are before the first commit of the PR
+   - graphQL instead of iterating over rest api / or parallel api calls
+   - support step debug logs == verbose mode (pwsh-github-action-tools support this?)
+   - option to not fail workflow
+      - if offending alert is in resolved state, then it is not a failure
+      - whitelist of secret types (https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security)
+- Docs
+   - ReadMe + architecture
+   - Powershell proper comments
+
+.LINK
+https://github.com/felickz/secret-scanning-review-action
+#>
 
 param(
-    [Switch]$FailOnAlert 
+    [Switch]$FailOnAlert
 )
-
-###DEBUG MODE
-$VerbosePreference = 'Continue'
-
-$env:GITHUB_REPOSITORY = 'octodemo/demo-vulnerabilities-ghas'
-$env:GITHUB_REF = 'refs/pull/120/merge'
-####
 
 #check if PowerShellForGitHub module is installed
 if (Get-Module -ListAvailable -Name PowerShellForGitHub -ErrorAction SilentlyContinue)
