@@ -1,0 +1,14 @@
+name: secret-scanning-review-action
+author: felickz
+description: Action to detect if a Secret Scanning alert is initially detected in a PR commit
+
+inputs:
+
+  FailOnAlert:
+    description: Throw workflow error if alert is detected
+    required: false
+
+#NodeJS entry point for PWSH action
+runs:
+  using: node12
+  main: _init/index.js
