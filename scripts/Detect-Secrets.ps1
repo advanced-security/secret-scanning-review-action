@@ -1,8 +1,11 @@
+#DONE
+#  - optional to fail via parameter
+#  - progress bar
+
 #TODO 
 #- actions compatible
 #  - GitHubActions module ( https://github.com/ebekker/pwsh-github-action-base)
 #     - options: https://github.com/ebekker/pwsh-github-action-tools/blob/master/docs/GitHubActions/README.md
-#  - optional fail vs warn via parameter
 #  - Annotations - https://github.com/actions/toolkit/tree/main/packages/core#annotations
 #     - warning message - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-a-warning-message
 #  - test Get-ActionRepo vs params
@@ -10,11 +13,14 @@
 #- output current state of alert (if it was bypassed pp)
 #- filter out alerts that are before the first commit of the PR
 #- graphQL instead of iterating over rest api / or parallel api calls
-#- step debug logs == verbose mode (pwsh-github-action-tools support this?)
+#- support step debug logs == verbose mode (pwsh-github-action-tools support this?)
+#- ReadMe + architecture
 
 
 
-param()
+param(
+    [Switch]$ErrorOnAlert 
+)
 
 ###DEBUG MODE
 $VerbosePreference = 'Continue'
@@ -81,7 +87,8 @@ if ($env:GITHUB_REF -match 'refs/pull/([0-9]+)')
 }
 else
 {
-    Set-ActionFailed -Message "GITHUB_REF is not set to a pull request number"    
+    #https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request
+    Set-ActionFailed -Message "Action workflow must be run on 'pull_request'.  GITHUB_REF is not set to a pull request number"    
 }
 
 #Default Org / Repo for all GH api calls
@@ -178,12 +185,13 @@ Write-Progress -Activity "Secret Scanning Alert Search" -Completed
 foreach ($alert in $alertsInitiatedFromPr) {
     foreach($location in $alert.locations) {
         Write-Host "[+] Alert: $($alert.html_url) at Path: '$($location.details.path)' (commit sha: $($location.details.commit_sha))"
+        # TODO - no support for ?Title? .. send PR to maintainer!
         Write-ActionWarning -Message "[+] Alert: $($alert.html_url) (commit sha: $($location.details.commit_sha))" -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
     }  
 }
 
-#if any alerts were found, exit with error code 1
-if($alertsInitiatedFromPr.Count -gt 0) {
+#if any alerts were found in ErrorOnAlert mode, exit with error code 1
+if($alertsInitiatedFromPr.Count -gt 0 -and $ErrorOnAlert) {
     Set-ActionFailed -Message "Found $($alertsInitiatedFromPr.count) secret scanning alert(s) that originated from a PR#$PullRequestNumber commit"
 }
 else {
