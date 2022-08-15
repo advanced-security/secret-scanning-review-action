@@ -1,3 +1,13 @@
+/*
+index.js via https://github.com/ebekker/pwsh-github-action-base/blob/master/_init/index.js
+
+
+A bootstrap JavaScript file that is used as the initial main entry point into your custom Action. After starting, it immediately transfers control to your PowerShell script by invoking the file action.ps1 in the directory immediately above the _init subdirectory. The invocation is equivalent to the following command-line call:
+
+pwsh -f /full/path/to/action.ps1
+The working directory is the same as at the start of the bootstrap script which is the root of the cloned repository of the Workflow in which the action is being invoked.
+*/
+
 module.exports =
 /******/ (function(modules, runtime) { // webpackBootstrap
 /******/ 	"use strict";
