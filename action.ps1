@@ -22,25 +22,22 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found.
 
 .NOTES
-TODO LIST 
-- actions compatible
+Features
+- Actions compatible
   - GitHubActions module ( https://github.com/ebekker/pwsh-github-action-base)
      - options: https://github.com/ebekker/pwsh-github-action-tools/blob/master/docs/GitHubActions/README.md
   - Annotations - https://github.com/actions/toolkit/tree/main/packages/core#annotations
      - warning message - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-a-warning-message
-- Features
-   - error handling for failing apis (404 when not authorized, etc)
-   - output current state of alert (if it was bypassed pp)
+TODO LIST 
    - filter out alerts that are before the first commit of the PR
    - graphQL instead of iterating over rest api / or parallel api calls
    - support step debug logs == verbose mode (pwsh-github-action-tools support this?)
-   - option to not fail workflow
-      - if offending alert is in resolved state, then it is not a failure
+   - options for FailOnAlert workflow switch
+      - if offending alert is in bypassed state, then it is not a failure
       - whitelist of secret types (https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security)
    -  GITHUB_TOKEN as param vs env var ... ex's : https://docs.github.com/en/actions/security-guides/automatic-token-authentication#modifying-the-permissions-for-the-github_token
-- Docs
-   - ReadMe + architecture
-   - Powershell proper comments
+   - Docs
+      - architecture mermaid chart
 
 .LINK
 https://github.com/felickz/secret-scanning-review-action
@@ -50,14 +47,7 @@ param(
     [Switch]$FailOnAlert
 )
 
-# PowerShellForGitHub module is not installed
-
-# Untrusted repository
-# You are installing the modules from an untrusted repository. If you trust this 
-# repository, change its InstallationPolicy value by running the Set-PSRepository
-#  cmdlet. Are you sure you want to install the modules from 'PSGallery'?
-# [Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help 
-# (default is "N"):
+# Handle `Untrusted repository` prompt
 Set-PSRepository PSGallery -InstallationPolicy Trusted
 
 #check if PowerShellForGitHub module is installed
@@ -130,7 +120,7 @@ try {
 } catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
-Write-Host "PR: $($pr.Title) has $($pr.commits) commits"
+Write-Host "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commits"
 ####@{url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/pulls/119; id=1022143435; node_id=PR_kwDOD0gIsM487KvL; html_url=https://github.com/octodemo/demo-vulnerabilities-ghas/pull/119; diff_url=https://github.com/octodemo/demo-vulnerabilities-ghas/pull/119.diff; patch_url=https://github.com/octodemo/demo-vulnerabilities-ghas/pull/119.patch; issue_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/issues/119; number=119; state=open; locked=False; title=test adding GCP API key; user=; body=; created_at=08/10/2022 02:23:05; updated_at=08/10/2022 19:49:58; closed_at=; merged_at=; merge_commit_sha=02b4b03dee89cb4d65112ab8f7f32756e4a1f684; assignee=; assignees=System.Object[]; requested_reviewers=System.Object[]; requested_teams=System.Object[]; labels=System.Object[]; milestone=; draft=False; commits_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/pulls/119/commits; review_comments_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/pulls/119/comments; review_comment_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/pulls/comments{/number}; comments_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/issues/119/comments; statuses_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/statuses/d5a2299dd7307a79ca6b8b3fbf5cf192e62a683d; head=; base=; _links=; author_association=COLLABORATOR; auto_merge=; active_lock_reason=; merged=False; mergeable=True; rebaseable=True; mergeable_state=blocked; merged_by=; comments=0; review_comments=0; maintainer_can_modify=True; commits=2; additions=3; deletions=0; changed_files=1}
 
 #commits_url https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request
@@ -149,7 +139,7 @@ foreach ($commit in $commits)
     $prCommitShaList += $commit.sha
 }
 
-Write-Host "PR Commit SHA list: $prCommitShaList"
+Write-Host "PR#$PullRequestNumber Commit SHA list: $($prCommitShaList -join ",")"
 
 ####@{id=256379056; node_id=MDEwOlJlcG9zaXRvcnkyNTYzNzkwNTY=; name=demo-vulnerabilities-ghas; full_name=octodemo/demo-vulnerabilities-ghas; private=True; owner=; html_url=https://github.com/octodemo/demo-vulnerabilities-ghas; description=This repo contains examples of all security feature available for GitHub Enterprise and GHAS. Use it for demo purposes only.; fork=False; url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas; forks_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/forks; keys_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/keys{/key_id}; collaborators_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/collaborators{/collaborator}; teams_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/teams; hooks_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/hooks; issue_events_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/issues/events{/number}; events_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/events; assignees_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/assignees{/user}; branches_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/branches{/branch}; tags_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/tags; blobs_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/git/blobs{/sha}; git_tags_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/git/tags{/sha}; git_refs_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/git/refs{/sha}; trees_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/git/trees{/sha}; statuses_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/statuses/{sha}; languages_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/languages; stargazers_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/stargazers; contributors_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/contributors; subscribers_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/subscribers; subscription_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/subscription; commits_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/commits{/sha}; git_commits_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/git/commits{/sha}; comments_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/comments{/number}; issue_comment_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/issues/comments{/number}; contents_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/contents/{+path}; compare_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/compare/{base}...{head}; merges_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/merges; archive_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/{archive_format}{/ref}; downloads_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/downloads; issues_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/issues{/number}; pulls_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/pulls{/number}; milestones_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/milestones{/number}; notifications_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/notifications{?since,all,participating}; labels_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/labels{/name}; releases_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/releases{/id}; deployments_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/deployments; created_at=04/17/2020 02:17:12; updated_at=05/17/2022 21:03:00; pushed_at=08/10/2022 19:47:32; git_url=git://github.com/octodemo/demo-vulnerabilities-ghas.git; ssh_url=org-38940897@github.com:octodemo/demo-vulnerabilities-ghas.git; clone_url=https://github.com/octodemo/demo-vulnerabilities-ghas.git; svn_url=https://github.com/octodemo/demo-vulnerabilities-ghas; homepage=; size=24244; stargazers_count=8; watchers_count=8; language=JavaScript; has_issues=True; has_projects=True; has_downloads=True; has_wiki=True; has_pages=False; forks_count=8; mirror_url=; archived=False; disabled=False; open_issues_count=71; license=; allow_forking=True; is_template=False; web_commit_signoff_required=False; topics=System.Object[]; visibility=internal; forks=8; open_issues=71; watchers=8; default_branch=main; permissions=; temp_clone_token=AANNZW2QMTIDF37VXPAAASLC6YJFM; allow_squash_merge=True; allow_merge_commit=True; allow_rebase_merge=True; allow_auto_merge=False; delete_branch_on_merge=False; allow_update_branch=False; use_squash_pr_title_as_default=False; squash_merge_commit_message=COMMIT_MESSAGES; squash_merge_commit_title=COMMIT_OR_PR_TITLE; merge_commit_message=PR_TITLE; merge_commit_title=MERGE_MESSAGE; organization=; security_and_analysis=; network_count=8; subscribers_count=0}
 ####$repo = Get-GitHubRepository -OwnerName $OrganizationName -RepositoryName $RepositoryName
@@ -207,14 +197,19 @@ foreach ($alert in $alerts) {
 #Clear progress bar and finish
 Write-Progress -Activity "Secret Scanning Alert Search" -Completed
 
+$numSecretsAlertsDetected = 0
+$numSecretsAlertLocationsDetected = 0
 #output the alert url for each alert that was found
 foreach ($alert in $alertsInitiatedFromPr) {
-    foreach($location in $alert.locations) {
-        Write-Host "[+] Alert: $($alert.html_url) at Path: '$($location.details.path)' (commit sha: $($location.details.commit_sha))"
+    $numSecretsAlertsDetected++
+    foreach($location in $alert.locations) {        
         # TODO - no support for ?Title? .. send PR to maintainer!
-        Write-ActionWarning -Message "[+] Alert: $($alert.html_url) (commit sha: $($location.details.commit_sha))" -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
+        $numSecretsAlertLocationsDetected++
+        Write-ActionWarning -Message "$($alert.push_protection_bypassed?'Bypassed':'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)).  Secret:$($alert.html_url) Commit:$($pr.html_url)/commits/$($location.details.commit_sha)" -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
     }  
 }
+
+Write-Host "SECRET SCANNING REVIEW SUMMARY: Found [$numSecretsAlertsDetected] alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit"
 
 #if any alerts were found in FailOnAlert mode, exit with error code 1
 if($alertsInitiatedFromPr.Count -gt 0 -and $FailOnAlert) {

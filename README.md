@@ -16,7 +16,7 @@ name: 'Secret Scanning Review'
 on: [pull_request]
 
 permissions:
-  contents: read
+  contents: read  
 
 jobs:
   secret-scanning-review:
@@ -33,6 +33,8 @@ jobs:
 
 ## Secrets the action uses
 * [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+
+   * Unfortunately we cannot currently utilize the built in Actions `GITHUB_TOKEN` due to missing permissions on the `secret-scanning` api.  Therefore you must generate a PAT with these permissions, add the token as as cret in your repository, and assign the secret to the env variable in the workflow. See [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
 
 ## Environment variables the action uses
 * GITHUB_REPOSITORY = The owner / repository name.
