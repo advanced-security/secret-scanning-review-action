@@ -25,7 +25,7 @@ jobs:
       - name: 'Checkout Repository'
         uses: actions/checkout@v3
       - name: 'Dependency Review'
-        uses: felickz/secret-scanning-review-action@v0.0.4-alpha
+        uses: felickz/secret-scanning-review-action@v0.0.5-alpha
 ```
 
 # Architecture
