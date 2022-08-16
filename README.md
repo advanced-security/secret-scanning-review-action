@@ -15,17 +15,14 @@ N/A
 name: 'Secret Scanning Review'
 on: [pull_request]
 
-permissions:
-  contents: read  
-
 jobs:
   secret-scanning-review:
     runs-on: ubuntu-latest
     steps:
-      - name: 'Checkout Repository'
-        uses: actions/checkout@v3
       - name: 'Dependency Review'
         uses: felickz/secret-scanning-review-action@v0.0.5-alpha
+        env:
+            GITHUB_TOKEN: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
 ```
 
 # Architecture
@@ -42,14 +39,14 @@ jobs:
 
 ## Dependencies
 * GitHub Dependencies
-    * GitHub REST APIs
+    * GitHub [REST APIs](#rest-apis)
     * `pwsh-github-action-base` ([Repo](https://github.com/ebekker/pwsh-github-action-base)) PowerShell Actions Wrapper Template
         * by [@ebekker](https://github.com/ebekker/)
    
-* External Dependencies
+* Powershell Dependencies
     * `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub/0.16.1) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
         * by [@microsoft](https://github.com/microsoft)
-    * GitHubActions ([Gallery](https://www.powershellgallery.com/packages/GitHubActions/1.0.0.3) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
+    * `GitHubActions` ([Gallery](https://www.powershellgallery.com/packages/GitHubActions/1.0.0.3) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
         * by [@ebekker](https://github.com/ebekker/)
 
 
