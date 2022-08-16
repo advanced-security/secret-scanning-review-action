@@ -37,6 +37,7 @@ TODO LIST
    - option to not fail workflow
       - if offending alert is in resolved state, then it is not a failure
       - whitelist of secret types (https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security)
+   -  GITHUB_TOKEN as param vs env var ... ex's : https://docs.github.com/en/actions/security-guides/automatic-token-authentication#modifying-the-permissions-for-the-github_token
 - Docs
    - ReadMe + architecture
    - Powershell proper comments
@@ -66,7 +67,7 @@ if (Get-Module -ListAvailable -Name PowerShellForGitHub -ErrorAction SilentlyCon
 }
 else
 {
-    Write-Host "PowerShellForGitHub module is not installed"
+    Write-Host "PowerShellForGitHub module is not installed.  Installing..."
     Install-Module -Name PowerShellForGitHub
 }
 
@@ -77,7 +78,7 @@ if (Get-Module -ListAvailable -Name GitHubActions -ErrorAction SilentlyContinue)
 }
 else
 {
-    Write-Host "GitHubActions module is not installed"
+    Write-Host "GitHubActions module is not installed.  Installing..."
     Install-Module -Name GitHubActions
 }
 
@@ -85,8 +86,7 @@ else
 #check if GITHUB_TOKEN is set
 if ($null -eq $env:GITHUB_TOKEN)
 {
-    Write-Host "GITHUB_TOKEN is not set"
-    exit 1
+    Set-ActionFailed -Message "GITHUB_TOKEN is not set"    
 }
 else
 {
@@ -125,14 +125,21 @@ else
 Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryName $RepositoryName
 
 #get PR info - https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#get-a-pull-request
-$pr = Get-GitHubPullRequest -PullRequest $PullRequestNumber
+try {
+    $pr = Get-GitHubPullRequest -PullRequest $PullRequestNumber
+} catch {
+    Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+}
 Write-Host "PR: $($pr.Title) has $($pr.commits) commits"
 ####@{url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/pulls/119; id=1022143435; node_id=PR_kwDOD0gIsM487KvL; html_url=https://github.com/octodemo/demo-vulnerabilities-ghas/pull/119; diff_url=https://github.com/octodemo/demo-vulnerabilities-ghas/pull/119.diff; patch_url=https://github.com/octodemo/demo-vulnerabilities-ghas/pull/119.patch; issue_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/issues/119; number=119; state=open; locked=False; title=test adding GCP API key; user=; body=; created_at=08/10/2022 02:23:05; updated_at=08/10/2022 19:49:58; closed_at=; merged_at=; merge_commit_sha=02b4b03dee89cb4d65112ab8f7f32756e4a1f684; assignee=; assignees=System.Object[]; requested_reviewers=System.Object[]; requested_teams=System.Object[]; labels=System.Object[]; milestone=; draft=False; commits_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/pulls/119/commits; review_comments_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/pulls/119/comments; review_comment_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/pulls/comments{/number}; comments_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/issues/119/comments; statuses_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/statuses/d5a2299dd7307a79ca6b8b3fbf5cf192e62a683d; head=; base=; _links=; author_association=COLLABORATOR; auto_merge=; active_lock_reason=; merged=False; mergeable=True; rebaseable=True; mergeable_state=blocked; merged_by=; comments=0; review_comments=0; maintainer_can_modify=True; commits=2; additions=3; deletions=0; changed_files=1}
 
 #commits_url https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request
 $prCommitsUrl = [uri]$pr.commits_url
+try {
 $commits = Invoke-GHRestMethod -Method GET -Uri $prCommitsUrl.AbsolutePath
-
+} catch {
+    Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber commits.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+}
 #for each PR commit add the commit sha to the list
 $prCommitShaList = @()
 foreach ($commit in $commits)
@@ -149,7 +156,11 @@ Write-Host "PR Commit SHA list: $prCommitShaList"
 
 #Query ALL(open/resolved) secret scanning alerts for the repository - https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository
 $repoAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts"
+try {
 $alerts = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl
+} catch {
+    Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+}
 
 #for each secret scanning alert, find the initial location of the secret and theh list
 $alertCount = 0
@@ -160,7 +171,12 @@ foreach ($alert in $alerts) {
     #Secret Scanning List Locations API - https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert
     # - RESPONSE: 1 "location" object per file where secret detected
     #    - details.commit_sha - SHA of the commit where the secret was detected
-    $locations = Invoke-GHRestMethod -Method GET -Uri $repoAlertLocationUrl.AbsolutePath
+    try {
+        $locations = Invoke-GHRestMethod -Method GET -Uri $repoAlertLocationUrl.AbsolutePath
+    } catch {
+        Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+    }
+
     $locationMatches = @()
     foreach ($location in $locations) {
         #@{path=secrets.yml; start_line=1; end_line=1; start_column=11; end_column=32; blob_sha=d233fb964b86e09d4a99bba85c6006dcc4c9258f; blob_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/git/blobs/d233fb964b86e09d4a99bba85c6006dcc4c9258f; commit_sha=44d3503204f61baffcad1f2293ab9dd41db4820a; commit_url=https://api.github.com/repos/octodemo/demo-vulnerabilities-ghas/git/commits/44d3503204f61baffcad1f2293ab9dd41db4820a}

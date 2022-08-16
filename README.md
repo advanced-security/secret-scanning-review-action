@@ -1,8 +1,42 @@
 # secret-scanning-review-action
 Action to detect if a Secret Scanning alert is initially detected in a PR commit
 
+## Inputs
+
+## `FailOnAlert`
+**OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `"false"`.
+
+## Outputs
+N/A
+
+## Example usage
+
+```yml
+name: 'Secret Scanning Review'
+on: [pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scanning-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v3
+      - name: 'Dependency Review'
+        uses: felickz/secret-scanning-review-action@v0.0.4-alpha
+```
+
 # Architecture
 * PowerShell based script wrapped in a GitHub NodeJS action
+
+## Secrets the action uses
+* [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+
+## Environment variables the action uses
+* GITHUB_REPOSITORY = The owner / repository name.
+* GITHUB_REF - PR merge branch refs/pull/:prNumber/merge
 
 ## Dependencies
 * GitHub Dependencies
