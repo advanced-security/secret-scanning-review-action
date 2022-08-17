@@ -105,6 +105,18 @@ $actionRepo = Get-ActionRepo
 $OrganizationName = $actionRepo.Owner
 $RepositoryName = $actionRepo.Repo
 
+# Init FailOnAlert switch
+# workaround - read $FailOnAlert from the environment variable
+Write-ActionDebug "FailOnAlert is set to '$FailOnAlert'. $($null -ne $env:SSR_FAIL_ON_ALERT ? "Overridden by environment variable SSR_FAIL_ON_ALERT: '$env:SSR_FAIL_ON_ALERT'" : $null)" 
+if($null -ne $env:SSR_FAIL_ON_ALERT)
+{
+    try {
+        $FailOnAlert = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT) 
+     } catch [FormatException] {
+        $FailOnAlert = $false
+    }
+}
+
 #get the pull request number from the GITHUB_REF environment variable
 if ($env:GITHUB_REF -match 'refs/pull/([0-9]+)')
 {
@@ -224,9 +236,18 @@ foreach ($alert in $alertsInitiatedFromPr) {
     foreach($location in $alert.locations) {        
         # TODO - no support for ?Title? .. send PR to maintainer!
         $numSecretsAlertLocationsDetected++
-        # Writes an Action Warning to the message log and creates an annotation associated with the file and line/col number.
-        #   -docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
-        Write-ActionWarning -Message "$($alert.push_protection_bypassed?'Bypassed':'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)).  Secret:$($alert.html_url) Commit:$($pr.html_url)/commits/$($location.details.commit_sha)" -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
+        $message = "$($alert.push_protection_bypassed?'Bypassed':'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)).  Secret:$($alert.html_url) Commit:$($pr.html_url)/commits/$($location.details.commit_sha)"
+        
+        if($FailOnAlert) {
+            # Writes an Action Error to the message log and creates an annotation associated with the file and line/col number.
+            #   -docs: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
+            Write-ActionError -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
+        }
+        else {
+            # Writes an Action Warning to the message log and creates an annotation associated with the file and line/col number.
+            #   -docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
+            Write-ActionWarning -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
+        }
     }  
 }
 
@@ -244,20 +265,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
 
 $summary = "SECRET SCANNING REVIEW SUMMARY: Found [$numSecretsAlertsDetected] alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit"
 
-
 #if any alerts were found in FailOnAlert mode, exit with error code 1
-# workaround - read $FailOnAlert from the environment variable
-Write-ActionDebug "FailOnAlert is set to '$FailOnAlert'. $($null -ne $env:SSR_FAIL_ON_ALERT ? "Overridden by environment variable SSR_FAIL_ON_ALERT: '$env:SSR_FAIL_ON_ALERT'" : $null)" 
-if($null -ne $env:SSR_FAIL_ON_ALERT)
-{
-    try {
-        $FailOnAlert = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT) 
-     } catch [FormatException] {
-        $FailOnAlert = $false
-    }
-}
-
-
 if($alertsInitiatedFromPr.Count -gt 0 -and $FailOnAlert) {
     Set-ActionFailed -Message $summary
 }
