@@ -52,6 +52,18 @@ param(
 # Handle `Untrusted repository` prompt
 Set-PSRepository PSGallery -InstallationPolicy Trusted
 
+#check if GitHubActions module is installed
+if (Get-Module -ListAvailable -Name GitHubActions -ErrorAction SilentlyContinue)
+{
+    Write-ActionDebug "GitHubActions module is installed"
+}
+else
+{
+    #directly to output here before module loaded to support Write-ActionInfo
+    Write-Output "GitHubActions module is not installed.  Installing from Gallery..."
+    Install-Module -Name GitHubActions
+}
+
 #check if PowerShellForGitHub module is installed
 if (Get-Module -ListAvailable -Name PowerShellForGitHub -ErrorAction SilentlyContinue)
 {
@@ -64,17 +76,6 @@ else
 
     #Disable Telemetry since we are accessing sensitive apis - https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry
     Set-GitHubConfiguration -DisableTelemetry -SessionOnly
-}
-
-#check if GitHubActions module is installed
-if (Get-Module -ListAvailable -Name GitHubActions -ErrorAction SilentlyContinue)
-{
-    Write-ActionDebug "GitHubActions module is installed"
-}
-else
-{
-    Write-ActionInfo "GitHubActions module is not installed.  Installing from Gallery..."
-    Install-Module -Name GitHubActions
 }
 
 #check if GITHUB_TOKEN is set
