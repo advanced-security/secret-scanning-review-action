@@ -3,8 +3,8 @@ Action to detect if a Secret Scanning alert is initially detected in a PR commit
 
 ## Inputs
 
-## `FailOnAlert`
-**OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `"false"`.
+### `FailOnAlert` (environment variable: SSR_FAIL_ON_ALERT)
+**OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `"false"`. Currently only works with GitHub Actions as an environment variable SSR_FAIL_ON_ALERT: true
 
 ## Outputs
 N/A
@@ -23,6 +23,7 @@ jobs:
         uses: felickz/secret-scanning-review-action@v0.0.8-alpha
         env:
             GITHUB_TOKEN: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
+            SSR_FAIL_ON_ALERT: true
 ```
 
 # Architecture
@@ -37,14 +38,17 @@ sequenceDiagram
     participant API_PR as pulls<br/><br/>REST API
     participant API_SECRET as secret-scanning<br/><br/> REST API
 
-    Repo->>PR: Create/Update PR
+    Repo->>PR: Create/Update PR    
     PR->>Action: invoke `pull_request` workflow
-    Action->>API_PR: GET PR
+    Action->>API_PR: GET PR    
     Action->>API_PR: GET PR Commits
+    
     loop Commits
         Action->>Action: Build PR Commit SHA list      
     end
+    
     Action->>API_SECRET: GET Secret Scanning Alerts
+    
     loop Secret Scanning Alerts
         Action->>API_SECRET: GET Secret Scanning Alert List Locations
         loop Secret Scanning Alert Locations
@@ -54,10 +58,15 @@ sequenceDiagram
 
     loop List of matching PR/Alerts
       loop List of Locations for matching PR/Alerts       
-        Action->>PR:Writes an Action Warning to the message log<br/>creates an annotation associated with the file and line/col number.
+        Action->>PR:Writes an Annotation to the message log<br/>associated with the file and line/col number.<br/>(Error/Warning based on FailOnAlert setting)
       end               
     end       
+    
     Note right of PR: Annotations are visible<br/>on the PR Files changed rich diff
+
+    Action->>PR:Writes summary to log.<br/>Returns success/failure exit code based on FailOnAlert setting.
+    
+    Note right of PR: Fail workflow check<br/>based on FailOnAlert setting.
 ```
 
 ## Secrets the action uses

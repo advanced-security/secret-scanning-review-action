@@ -10,16 +10,20 @@ Requirements:
 - GITHUB_TOKEN with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
 
 .EXAMPLE
-PS>$VerbosePreference = 'Continue'
-PS>$env:GITHUB_TOKEN = "<get a token from github>"    
-PS>$env:GITHUB_REPOSITORY = 'octodemo/demo-vulnerabilities-ghas'
-PS>$env:GITHUB_REF = 'refs/pull/120/merge'
+PS>Write-Host "initializing local run! Ensure you provide a valid GITHUB_TOKEN otherwise you will get a 401!!! "
+$VerbosePreference = 'Continue'
+$env:GITHUB_TOKEN = "<get a token from github>"
+$env:GITHUB_REPOSITORY = 'octodemo/demo-vulnerabilities-ghas'
+$env:GITHUB_REF = 'refs/pull/120/merge'
+$env:SSR_FAIL_ON_ALERT = "true"
 PS> action.ps1
 
 A simple example execution of the internal pwsh script against an Owner/Repo and Pull Request outside of GitHub Action context
 
 .PARAMETER FailOnAlert
-        If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found.
+        If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found.  
+        Default is false. 
+        NOTE: Currently only works with GitHub Actions as an environment variable SSR_FAIL_ON_ALERT: true
 
 .NOTES
 Features
