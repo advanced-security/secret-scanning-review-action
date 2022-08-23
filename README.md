@@ -119,5 +119,6 @@ sequenceDiagram
 ## Why Powershell
 A few reasons
 1. I was challanged by a coworker during a Python v PowerShell discussion
-2. To demonstrate actions flexibility
+2. To demonstrate GitHub Actions flexibility ([pwsh is installed by default on the runners!](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software))
 3. Find current pitfalls and work with platform team to improve!
+4. Powershell is cross-platform automation platform with the power of .NET!
