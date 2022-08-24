@@ -32,6 +32,7 @@ jobs:
         env:
             GITHUB_TOKEN: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
             SSR_FAIL_ON_ALERT: true
+            SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: true
 ```
 
 # Architecture
