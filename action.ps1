@@ -254,7 +254,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
     foreach($location in $alert.locations) {                
         $numSecretsAlertLocationsDetected++
         $message = "$($alert.state -eq 'resolved' ? "Closed as '$($alert.resolution)'" : 'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)).  Secret:$($alert.html_url) Commit:$($pr.html_url)/commits/$($location.details.commit_sha)"        
-        $shouldBypass = ($alert.state -eq 'resolved') -and !$FailOnAlertExcludeClosed
+        $shouldBypass = ($alert.state -eq 'resolved') -and $FailOnAlertExcludeClosed
 
         if($FailOnAlert -and !$shouldBypass) {
             # Writes an Action Error to the message log and creates an annotation associated with the file and line/col number. (# TODO - no support for ?Title? .. send PR to maintainer!)
