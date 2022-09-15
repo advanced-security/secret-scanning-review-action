@@ -1,10 +1,13 @@
 # secret-scanning-review-action
-Action to provide feedback to the developer when a Secret Scanning alert is initially detected in a PR commit.
+Action to provide feedback annotations to the developer when a Secret Scanning alert is initially detected in a PR commit.
 
 This action is used to fill in the following gaps in alerting the developer:
-* secret scanning only alerts [users with proper permissions to access security alerts and proper repo watch notification configurations](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/managing-alerts-from-secret-scanning#configuring-notifications-for-secret-scanning-alerts).  Alerts can also be configured to be async via email and may not be viewed in immediately.
-* secrets that are decected with [advanced security](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security) but are not supported via [push protection](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-push-protection) (including custom patterns - [public roadmap to add support soon](https://github.com/github/roadmap/issues/496) )
-* secrets that are introduced via [push protection bypass](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/protecting-pushes-with-secret-scanning#allowing-a-blocked-secret-to-be-pushed)
+* Secret Scanning only alerts [users with proper permissions to access security alerts and proper repo watch notification configurations](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/managing-alerts-from-secret-scanning#configuring-notifications-for-secret-scanning-alerts).  Alerts can also be configured to be async via email and may not be viewed in immediately. 
+* Secrets that are decected with [advanced security](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security) but are not supported via [push protection](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-push-protection) (including custom patterns - [public roadmap to add support soon](https://github.com/github/roadmap/issues/496) )
+* Secrets that are introduced via [push protection bypass](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/protecting-pushes-with-secret-scanning#allowing-a-blocked-secret-to-be-pushed)
+
+Security Model Changes
+* To be clear, this now makes Secret Scanning Alerts visible to anyone with `read` access to a repo [following the code scanning annotations access model](https://docs.github.com/en/enterprise-cloud@latest/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/managing-code-scanning-alerts-for-your-repository#viewing-the-alerts-for-a-repository).  This security control level consistent with the access needed to see any secrets already commited to git history!
 
 ## Inputs
 
@@ -28,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Dependency Review'
-        uses: felickz/secret-scanning-review-action@v0.0.10-alpha
+        uses: felickz/secret-scanning-review-action@v0.0.11-alpha
         env:
             GITHUB_TOKEN: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
             SSR_FAIL_ON_ALERT: true

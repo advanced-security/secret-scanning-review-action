@@ -64,24 +64,20 @@ param(
 Set-PSRepository PSGallery -InstallationPolicy Trusted
 
 #check if GitHubActions module is installed
-if (Get-Module -ListAvailable -Name GitHubActions -ErrorAction SilentlyContinue)
-{
+if (Get-Module -ListAvailable -Name GitHubActions -ErrorAction SilentlyContinue) {
     Write-ActionDebug "GitHubActions module is installed"
 }
-else
-{
+else {
     #directly to output here before module loaded to support Write-ActionInfo
     Write-Output "GitHubActions module is not installed.  Installing from Gallery..."
     Install-Module -Name GitHubActions
 }
 
 #check if PowerShellForGitHub module is installed
-if (Get-Module -ListAvailable -Name PowerShellForGitHub -ErrorAction SilentlyContinue)
-{
+if (Get-Module -ListAvailable -Name PowerShellForGitHub -ErrorAction SilentlyContinue) {
     Write-ActionDebug "PowerShellForGitHub module is installed"
 }
-else
-{
+else {
     Write-ActionInfo "PowerShellForGitHub module is not installed.  Installing from Gallery..."
     Install-Module -Name PowerShellForGitHub
 
@@ -90,12 +86,10 @@ else
 }
 
 #check if GITHUB_TOKEN is set
-if ($null -eq $env:GITHUB_TOKEN)
-{
+if ($null -eq $env:GITHUB_TOKEN) {
     Set-ActionFailed -Message "GITHUB_TOKEN is not set"    
 }
-else
-{
+else {
     Write-ActionDebug "GITHUB_TOKEN is set"
 }
 
@@ -118,11 +112,11 @@ $RepositoryName = $actionRepo.Repo
 # Init FailOnAlert switch
 # workaround - read $FailOnAlert from the environment variable
 Write-ActionDebug "FailOnAlert is set to '$FailOnAlert'. $($null -ne $env:SSR_FAIL_ON_ALERT ? "Overridden by environment variable SSR_FAIL_ON_ALERT: '$env:SSR_FAIL_ON_ALERT'" : $null)" 
-if($null -ne $env:SSR_FAIL_ON_ALERT)
-{
+if ($null -ne $env:SSR_FAIL_ON_ALERT) {
     try {
         $FailOnAlert = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT) 
-     } catch [FormatException] {
+    }
+    catch [FormatException] {
         $FailOnAlert = $false
     }
 }
@@ -130,22 +124,20 @@ if($null -ne $env:SSR_FAIL_ON_ALERT)
 # Init FailOnAlertExcludeClosed switch
 # workaround - read $FailOnAlertExcludeClosed from the environment variable
 Write-ActionDebug "FailOnAlertExcludeClosed is set to '$FailOnAlertExcludeClosed'. $($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED ? "Overridden by environment variable SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: '$env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED'" : $null)" 
-if($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED)
-{
+if ($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED) {
     try {
         $FailOnAlertExcludeClosed = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED) 
-     } catch [FormatException] {
+    }
+    catch [FormatException] {
         $FailOnAlertExcludeClosed = $false
     }
 }
 
 #get the pull request number from the GITHUB_REF environment variable
-if ($env:GITHUB_REF -match 'refs/pull/([0-9]+)')
-{
+if ($env:GITHUB_REF -match 'refs/pull/([0-9]+)') {
     $PullRequestNumber = $matches[1]
 }
-else
-{
+else {
     #https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request
     Set-ActionFailed -Message "Action workflow must be run on 'pull_request'.  GITHUB_REF is not set to a pull request number"    
 }
@@ -159,7 +151,8 @@ Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryNa
 #>
 try {
     $pr = Get-GitHubPullRequest -PullRequest $PullRequestNumber
-} catch {
+}
+catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 Write-ActionInfo "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commits"
@@ -171,13 +164,14 @@ Write-ActionInfo "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commit
 $prCommitsUrl = [uri]$pr.commits_url
 try {
     $commits = Invoke-GHRestMethod -Method GET -Uri $prCommitsUrl.AbsolutePath
-} catch {
+}
+catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber commits.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
 #for each PR commit add the commit sha to the list
 $prCommitShaList = @()
-foreach ($commit in $commits){
+foreach ($commit in $commits) {
     #     ex commit:
     #     sha          : d5a2299dd7307a79ca6b8b3fbf5cf192e62a683d
     $prCommitShaList += $commit.sha
@@ -192,8 +186,9 @@ Write-ActionInfo "PR#$PullRequestNumber Commit SHA list: $($prCommitShaList -joi
 #>
 $repoAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts"
 try {
-$alerts = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl
-} catch {
+    $alerts = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl
+}
+catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
@@ -210,7 +205,8 @@ foreach ($alert in $alerts) {
     $repoAlertLocationUrl = [uri]$alert.locations_url
     try {
         $locations = Invoke-GHRestMethod -Method GET -Uri $repoAlertLocationUrl.AbsolutePath
-    } catch {
+    }
+    catch {
         Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
     }
 
@@ -229,14 +225,14 @@ foreach ($alert in $alerts) {
     }
 
     #if there are any matches, then add alert to the global list of alerts/locations that match the PR
-    if($locationMatches.Count -gt 0) {
+    if ($locationMatches.Count -gt 0) {
         $null = $alert | Add-Member -MemberType NoteProperty -Name 'locations' -Value $locationMatches -PassThru
         $alertsInitiatedFromPr += $alert
     }
    
     #output progress
     $alertCount++
-    $progress = [math]::Round(($alertCount/$alerts.count)*100, 0)
+    $progress = [math]::Round(($alertCount / $alerts.count) * 100, 0)
     Write-Progress -Activity "Secret Scanning Alert Search" -Status "Progress: $progress%" -PercentComplete $progress
 }
 
@@ -251,12 +247,12 @@ $shouldFailAction = $false
 
 foreach ($alert in $alertsInitiatedFromPr) {
     $numSecretsAlertsDetected++
-    foreach($location in $alert.locations) {                
+    foreach ($location in $alert.locations) {                
         $numSecretsAlertLocationsDetected++
-        $message = "$($alert.state -eq 'resolved' ? "Closed as '$($alert.resolution)'" : 'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)).  Secret:$($alert.html_url) Commit:$($pr.html_url)/commits/$($location.details.commit_sha)"        
+        $message = "A $($alert.state -eq 'resolved' ? "Closed as '$($alert.resolution)'" : 'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)). '$($alert.secret_type_display_name)' Secret: $($alert.html_url) Commit: $($pr.html_url)/commits/$($location.details.commit_sha)"        
         $shouldBypass = ($alert.state -eq 'resolved') -and $FailOnAlertExcludeClosed
 
-        if($FailOnAlert -and !$shouldBypass) {
+        if ($FailOnAlert -and !$shouldBypass) {
             # Writes an Action Error to the message log and creates an annotation associated with the file and line/col number. (# TODO - no support for ?Title? .. send PR to maintainer!)
             #   -docs: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
             Write-ActionError -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
@@ -286,9 +282,18 @@ foreach ($alert in $alertsInitiatedFromPr) {
 #Output Summary and Return exit code 
 # -  any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
 # -  otherwise, return 0
-$summary = "SECRET SCANNING REVIEW SUMMARY: Found [$numSecretsAlertsDetected] alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit"
+$summary = 
+@"
+# :unlock: SECRET SCANNING REVIEW SUMMARY :unlock:
+Found [$numSecretsAlertsDetected] alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit
+"@
 
-if($alertsInitiatedFromPr.Count -gt 0 -and $shouldFailAction) {
+#https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary
+# TODO - make this flashy! - https://github.blog/2022-05-09-supercharging-github-actions-with-job-summaries/
+$summary >> $GITHUB_STEP_SUMMARY
+$summary
+
+if ($alertsInitiatedFromPr.Count -gt 0 -and $shouldFailAction) {
     Set-ActionFailed -Message $summary
 }
 else {
