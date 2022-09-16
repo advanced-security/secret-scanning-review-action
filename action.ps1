@@ -290,8 +290,7 @@ Found [$numSecretsAlertsDetected] alert$($numSecretsAlertsDetected -eq 1 ? '' : 
 
 #https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary
 # TODO - make this flashy! - https://github.blog/2022-05-09-supercharging-github-actions-with-job-summaries/
-$summary >> $GITHUB_STEP_SUMMARY
-$summary
+$env:GITHUB_STEP_SUMMARY += $summary
 
 if ($alertsInitiatedFromPr.Count -gt 0 -and $shouldFailAction) {
     Set-ActionFailed -Message $summary
