@@ -16,6 +16,7 @@ $VerbosePreference = 'SilentlyContinue'
 $env:GITHUB_TOKEN = gh auth token
 $env:GITHUB_REPOSITORY = 'octodemo/demo-vulnerabilities-ghas'
 $env:GITHUB_REF = 'refs/pull/120/merge'
+$env:GITHUB_STEP_SUMMARY = $(New-Item -Name /_temp/_runner_file_commands/step_summary_a01d8a3b-1412-4059-9cf1-f7c4b54cff76 -ItemType File -Force).FullName
 $env:SSR_FAIL_ON_ALERT = "true"
 $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED = "true"
 PS> action.ps1
@@ -314,21 +315,19 @@ if ($alertsInitiatedFromPr.Count -gt 0) {
     $markdownSummary += $markdownSummaryTableRows
 }
 
-# GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
-$env:GITHUB_STEP_SUMMARY += $markdownSummary
+#Output Step Summary - To the GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
+$markdownSummary > $env:GITHUB_STEP_SUMMARY 
+#Get-Item -Path $env:GITHUB_STEP_SUMMARY | Show-Markdown
+Write-ActionDebug "Markdown Summary from env var GITHUB_STEP_SUMMARY: '$env:GITHUB_STEP_SUMMARY' "
+Write-ActionDebug $(Get-Content $env:GITHUB_STEP_SUMMARY)
 
-#local dev: clear this so subsquent runs don't append to the summary ($env:GITHUB_STEP_SUMMARY = $null)
-#$env:GITHUB_STEP_SUMMARY | Show-Markdown
-Write-ActionDebug "Markdown Summary from env var GITHUB_STEP_SUMMARY:"
-Write-ActionDebug $env:GITHUB_STEP_SUMMARY
-
-#Output Summary and Return exit code 
+#Output Message Summary and set exit code 
 # -  any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
 # -  otherwise, return 0
 if ($alertsInitiatedFromPr.Count -gt 0 -and $shouldFailAction) {
     Set-ActionFailed -Message $summary
 }
 else {
-    Write-ActionInfo $summary    
+    Write-ActionInfo $summary
     exit 0
 }

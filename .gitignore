@@ -333,3 +333,6 @@ ASALocalRun/
 ## Standard Ignores
 _IGNORE/
 _TMP/
+
+## GitHub Actions Simulation
+_temp/
