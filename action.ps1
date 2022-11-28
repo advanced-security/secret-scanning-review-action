@@ -302,7 +302,7 @@ if ($alertsInitiatedFromPr.Count -gt 0) {
     
     $markdownSummary += @"
 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Location 🎯 |
-| --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |`n
 "@
 
     # MOVED THIS TO EXISTING LOOP ^^
