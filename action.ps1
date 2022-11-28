@@ -254,7 +254,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
     $numSecretsAlertsDetected++
     foreach ($location in $alert.locations) {                
         $numSecretsAlertLocationsDetected++
-        $message = "A $($alert.state -eq 'resolved' ? "Closed as '$($alert.resolution)'" : 'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)). '$($alert.secret_type_display_name)' [Secret]($($alert.html_url)) Commit: $($pr.html_url)/commits/$($location.details.commit_sha)"        
+        $message = "A $($alert.state -eq 'resolved' ? "Closed as '$($alert.resolution)'" : 'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)). '$($alert.secret_type_display_name)' Secret: $($alert.html_url) Commit: $($pr.html_url)/commits/$($location.details.commit_sha)"        
         $shouldBypass = ($alert.state -eq 'resolved') -and $FailOnAlertExcludeClosed
 
         if ($FailOnAlert -and !$shouldBypass) {
