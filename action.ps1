@@ -262,14 +262,16 @@ foreach ($alert in $alertsInitiatedFromPr) {
             #   -docs: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
             Write-ActionError -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
             $shouldFailAction = $true
+            $passFail = "🔴"
         }
         else {
             # Writes an Action Warning to the message log and creates an annotation associated with the file and line/col number. (# TODO - no support for ?Title? .. send PR to maintainer!)
             #   -docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
             Write-ActionWarning -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
+            $passFail = "🟡"
         }
 
-        $markdownSummaryTableRows += "| :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($alert.resolution) | $($alert.push_protection_bypassed) | [$($location.details.commit_sha.SubString(0,7))]($($pr.html_url)/commits/$($location.details.commit_sha)) | `n"
+        $markdownSummaryTableRows += "| $passFail | :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($null -eq $alert.resolution ? '❌' : $alert.resolution) | $($alert.push_protection_bypassed) | [$($location.details.commit_sha.SubString(0,7))]($($pr.html_url)/commits/$($location.details.commit_sha)) | `n"
     }
 }
 
@@ -297,8 +299,8 @@ $markdownSummary = "# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET S
 if ($alertsInitiatedFromPr.Count -gt 0) {
     
     $markdownSummary += @"
-| Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Commit #️⃣ |
-| --- | --- | --- | --- | --- | --- |`n
+| Error 🔴 / Warning 🟡 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Commit #️⃣ |
+| --- | --- | --- | --- | --- | --- | --- |`n
 "@
 
     $markdownSummary += $markdownSummaryTableRows
