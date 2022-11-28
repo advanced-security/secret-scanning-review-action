@@ -10,6 +10,10 @@ Additional secret scanning `trust->but->verify` control in your branch protectio
 
 <img width="854" alt="Secret Scanning Review Workflow Checks" src="https://user-images.githubusercontent.com/1760475/185046465-1924d71c-3e73-4269-94b9-e5bc283410f4.png">
 
+Summary of all secrets in the Secret Scanning Review workflow job summary
+
+<img width="854" alt="Secret Scanning Review Workflow Checks" src="https://user-images.githubusercontent.com/1760475/204209697-7f13551b-5fea-4bc0-bb6e-f4757a82c946.png">
+
 ## Overview
 This action is used to enhance the Advanced Security Secret Scanning experience with:
 * Increased Alert Visibility
