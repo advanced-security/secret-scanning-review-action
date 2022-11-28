@@ -269,7 +269,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
             Write-ActionWarning -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
         }
 
-        $markdownSummaryTableRows += "| :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($alert.resolution) | $($location.details.path)#LL$($location.details.start_line)C$($location.details.start_column)-L$($location.details.end_line)C$($location.details.end_column) |`n"
+        $markdownSummaryTableRows += "| :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($alert.resolution) | $($alert.push_protection_bypassed) | $($location.details.path)#LL$($location.details.start_line)C$($location.details.start_column)-L$($location.details.end_line)C$($location.details.end_column) | [$($location.details.commit_sha.SubString(0,7))]($($pr.html_url)/commits/$($location.details.commit_sha)) | `n"
     }
 }
 
@@ -287,29 +287,20 @@ foreach ($alert in $alertsInitiatedFromPr) {
 
 
 # One line summary of alerts found
-$summary = "Found [$numSecretsAlertsDetected] secret scanning alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit"
+$summary = "$($numSecretsAlertsDetected -gt 0 ? '🚨' : '👍') Found [$numSecretsAlertsDetected] secret scanning alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit"
 
 #Actions Markdown Summary - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary
 #flashy! - https://github.blog/2022-05-09-supercharging-github-actions-with-job-summaries/
-$markdownSummary =
-@"
-# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET SCANNING REVIEW SUMMARY :unlock:
-$summary `n
-"@
+$markdownSummary = "# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET SCANNING REVIEW SUMMARY :unlock: `n $summary `n"
 
 #build a markdown table of any alerts
 if ($alertsInitiatedFromPr.Count -gt 0) {
     
     $markdownSummary += @"
-| Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Location 🎯 |
+| Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Location 🎯 | Commit #️⃣ |
 | --- | --- | --- | --- | --- |`n
 "@
 
-    # MOVED THIS TO EXISTING LOOP ^^
-    # #loop through each alert and add a row to the table
-    # # foreach ($alert in $alertsInitiatedFromPr) {
-    # #     $markdownSummary += "| :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($alert.resolution) | $($alert.locations[0].details.path): $($alert.locations[0].details.start_line): $($alert.locations[0].details.start_column) |`n"
-    # # }
     $markdownSummary += $markdownSummaryTableRows
 }
 
