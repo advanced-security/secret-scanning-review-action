@@ -269,7 +269,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
             Write-ActionWarning -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
         }
 
-        $markdownSummaryTableRows += "| :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($alert.resolution) | $($alert.push_protection_bypassed) | $($location.details.path)#LL$($location.details.start_line)C$($location.details.start_column)-L$($location.details.end_line)C$($location.details.end_column) | [$($location.details.commit_sha.SubString(0,7))]($($pr.html_url)/commits/$($location.details.commit_sha)) | `n"
+        $markdownSummaryTableRows += "| :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($alert.resolution) | $($alert.push_protection_bypassed) | [$($location.details.commit_sha.SubString(0,7))]($($pr.html_url)/commits/$($location.details.commit_sha)) | `n"
     }
 }
 
@@ -297,8 +297,8 @@ $markdownSummary = "# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET S
 if ($alertsInitiatedFromPr.Count -gt 0) {
     
     $markdownSummary += @"
-| Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Location 🎯 | Commit #️⃣ |
-| --- | --- | --- | --- | --- | --- | --- |`n
+| Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Commit #️⃣ |
+| --- | --- | --- | --- | --- | --- |`n
 "@
 
     $markdownSummary += $markdownSummaryTableRows
