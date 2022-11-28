@@ -298,7 +298,7 @@ if ($alertsInitiatedFromPr.Count -gt 0) {
     
     $markdownSummary += @"
 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Location 🎯 | Commit #️⃣ |
-| --- | --- | --- | --- | --- |`n
+| --- | --- | --- | --- | --- | --- | --- |`n
 "@
 
     $markdownSummary += $markdownSummaryTableRows
