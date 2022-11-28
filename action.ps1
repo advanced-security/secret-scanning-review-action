@@ -293,7 +293,7 @@ $summary = "Found [$numSecretsAlertsDetected] secret scanning alert$($numSecrets
 #flashy! - https://github.blog/2022-05-09-supercharging-github-actions-with-job-summaries/
 $markdownSummary =
 @"
-# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET SCANNING REVIEW SUMMARY :unlock: `n
+# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET SCANNING REVIEW SUMMARY :unlock:
 $summary `n
 "@
 
@@ -301,10 +301,8 @@ $summary `n
 if ($alertsInitiatedFromPr.Count -gt 0) {
     
     $markdownSummary += @"
-`n
-| Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Location 🎯 | `n
-| --- | --- | --- | --- | --- | `n
-`n
+| Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Location 🎯 |
+| --- | --- | --- | --- | --- |
 "@
 
     # MOVED THIS TO EXISTING LOOP ^^
