@@ -99,8 +99,14 @@ sequenceDiagram
 ```
 
 ## Required Credentials
-* [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+* [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) 
+   * Classic Tokens
+      *  repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+   * Fine-grained personal access token permissions
+      * Read-Only - [Secret Scanning Alerts](https://docs.github.com/en/rest/overview/permissions-required-for-fine-grained-personal-access-tokens#secret-scanning-alerts)
+      * Read-Only - [Pull requests](https://docs.github.com/en/rest/overview/permissions-required-for-fine-grained-personal-access-tokens#pull-requests)
 
+NOTE:
    * Unfortunately we cannot currently utilize the built in Actions `GITHUB_TOKEN` due to ommitted permissions on the `secret-scanning` api.  Therefore you must generate a token (PAT or GitHub App) with these permissions, add the token as a secret in your repository, and assign the secret to the env variable in the workflow. See [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
    * It is worth noting this token will have `sensitive` data access to return a list of plain text secrets that have been detected in your organization/repository.  At this point, a detected secret also implies anyone with read repository access would provide the same level of access to the leaked secret and therefore should be considered compromised.
 
