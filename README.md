@@ -1,15 +1,28 @@
 # secret-scanning-review-action
 Action to provide feedback annotations to the developer when a Secret Scanning alert is initially detected in a PR commit.
 
-This action is used to fill in the following gaps in alerting the developer:
-* Secret Scanning only alerts [users with proper permissions to access security alerts and proper repo watch notification configurations](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/managing-alerts-from-secret-scanning#configuring-notifications-for-secret-scanning-alerts).  Alerts can also be configured to be async via email and may not be viewed in immediately. 
-* Secrets that are decected with [advanced security](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security) but are not supported via [push protection](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-push-protection) (including custom patterns - [public roadmap to add support soon](https://github.com/github/roadmap/issues/496) )
-* Secrets that are introduced via [push protection bypass](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/protecting-pushes-with-secret-scanning#allowing-a-blocked-secret-to-be-pushed)
+The action is intended for private repositories that have GitHub Advanced Security licensed.
 
-Security Model Changes
-* To be clear, this now makes Secret Scanning Alerts visible to anyone with `read` access to a repo [following the code scanning annotations access model](https://docs.github.com/en/enterprise-cloud@latest/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/managing-code-scanning-alerts-for-your-repository#viewing-the-alerts-for-a-repository).  This security control level consistent with the access needed to see any secrets already commited to git history!
+Adds a error/warning annotation alert to any PR file that has introduced a secret (based on the secret scanning alert initial commit)
+<img width="854" alt="Secret Scanning Review Workflow File Annotation" src="https://user-images.githubusercontent.com/1760475/185046387-576fb75b-8a68-4640-94bc-9966f1f3b721.png">
 
-## Inputs
+Additional secret scanning `trust->but->verify` control in your branch protection rules 
+
+<img width="854" alt="Secret Scanning Review Workflow Checks" src="https://user-images.githubusercontent.com/1760475/185046465-1924d71c-3e73-4269-94b9-e5bc283410f4.png">
+
+## Overview
+This action is used to enhance the Advanced Security Secret Scanning experience with:
+* Increased Alert Visibility
+   * Secret Scanning alerts are only sent to [the commiter / Admin role](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-user-access-to-your-organizations-repositories/repository-roles-for-an-organization#access-requirements-for-security-features) dependent on [proper repo watch notification configurations](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/managing-alerts-from-secret-scanning#configuring-notifications-for-secret-scanning-alerts).  Alerts can also be configured to be async via email and may not be viewed in immediately. 
+* Additional Alerting Scope
+   * Increase visibility for secrets that are decected with [advanced security](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security) but are not supported via [push protection](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-push-protection) (including custom patterns - [public roadmap to add support soon](https://github.com/github/roadmap/issues/496) )
+* Trust but Verify
+    * Secrets that are initially prevented but have been forced into the Pull Request via [push protection bypass](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/protecting-pushes-with-secret-scanning#allowing-a-blocked-secret-to-be-pushed) can now be audited via Branch Protection / Required Checks](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/about-protected-branches#require-status-checks-before-merging).
+
+## Security Model Changes
+* To be clear, this will make Secret Scanning Alerts visible to anyone with `Read` access to a repo [following the View code scanning alerts on pull requests](https://docs.github.com/en/enterprise-cloud@latest/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/managing-code-scanning-alerts-for-your-repository#viewing-the-alerts-for-a-repository) via the workflow annotation access model.  This security control level is consistent with the access needed to see any raw secrets already commited to git history!
+
+## Configuration Options
 
 ### `FailOnAlert` (environment variable: SSR_FAIL_ON_ALERT)
 **OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `"false"`. Currently only works with GitHub Actions as an environment variable SSR_FAIL_ON_ALERT: true
@@ -22,6 +35,10 @@ N/A
 
 ## Example usage
 
+**Please keep in mind that you need a [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security) license if you're running this action on private repositories.**
+
+1. Add a new YAML workflow to your `.github/workflows` folder:
+
 ```yml
 name: 'Secret Scanning Review'
 on: [pull_request]
@@ -31,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Dependency Review'
-        uses: felickz/secret-scanning-review-action@v0.0.12-alpha
+        uses: felickz/secret-scanning-review-action@v0
         env:
             GITHUB_TOKEN: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
             SSR_FAIL_ON_ALERT: true
@@ -81,13 +98,13 @@ sequenceDiagram
     Note right of PR: Fail workflow check<br/>based on FailOnAlert setting.
 ```
 
-## Secrets the action uses
+## Required Credentials
 * [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
 
    * Unfortunately we cannot currently utilize the built in Actions `GITHUB_TOKEN` due to ommitted permissions on the `secret-scanning` api.  Therefore you must generate a token (PAT or GitHub App) with these permissions, add the token as a secret in your repository, and assign the secret to the env variable in the workflow. See [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
    * It is worth noting this token will have `sensitive` data access to return a list of plain text secrets that have been detected in your organization/repository.  At this point, a detected secret also implies anyone with read repository access would provide the same level of access to the leaked secret and therefore should be considered compromised.
 
-## Environment variables the action uses
+## Environment Variables
 * Required
   * GITHUB_TOKEN - token used to invoke REST APIs
 * Implicit
@@ -95,20 +112,21 @@ sequenceDiagram
   * GITHUB_REF - PR merge branch refs/pull/:prNumber/merge
 * Optional
   * SSR_FAIL_ON_ALERT - overrides the FailOnAlert input 
+  * SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED - overrides the FailOnAlertExcludeClosed input
+* Outputs
+  * GITHUB_STEP_SUMMARY - Markdown for each job so that it will be displayed on the summary page of a workflow run (unique for each step in a job)
 
 ## Dependencies
 * GitHub Dependencies
     * GitHub [REST APIs](#rest-apis)
     * `pwsh-github-action-base` ([Repo](https://github.com/ebekker/pwsh-github-action-base)) PowerShell Actions Wrapper Template
         * by [@ebekker](https://github.com/ebekker/)
-   
 * Powershell Dependencies
     * `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub/0.16.1) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
         * by [@microsoft](https://github.com/microsoft)
         * NOTE: [Telemetry is collected via Application Insights](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry)
     * `GitHubActions` ([Gallery](https://www.powershellgallery.com/packages/GitHubActions/1.0.0.3) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
         * by [@ebekker](https://github.com/ebekker/)
-
 
 ## REST APIs
 * Pulls

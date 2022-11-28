@@ -10,9 +10,10 @@ Requirements:
 - GITHUB_TOKEN with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
 
 .EXAMPLE
+PS>gh auth token # <-- Easy to grab a local auth token to test with from here!
 PS>Write-Host "initializing local run! Ensure you provide a valid GITHUB_TOKEN otherwise you will get a 401!!! "
 $VerbosePreference = 'SilentlyContinue'
-$env:GITHUB_TOKEN = "<get a token from github>"
+$env:GITHUB_TOKEN = gh auth token
 $env:GITHUB_REPOSITORY = 'octodemo/demo-vulnerabilities-ghas'
 $env:GITHUB_REF = 'refs/pull/120/merge'
 $env:SSR_FAIL_ON_ALERT = "true"
@@ -216,11 +217,11 @@ foreach ($alert in $alerts) {
 
         #if alertInitialCommitSha in list of commit shas, then add location to list to further add to the alert list
         if ($alertInitialCommitSha -in $prCommitShaList) {
-            Write-ActionDebug "YES! Found a secret scanning alert (# $($alert.number)) on initial commit sha: $alertInitialCommitSha that originated from a PR#$PullRequestNumber commit"
+            Write-ActionDebug "YES! Found a repo secret scanning alert (# $($alert.number)) on initial commit sha: $alertInitialCommitSha that originated from a PR#$PullRequestNumber commit"
             $locationMatches += $location
         }
         else {
-            Write-ActionDebug "NO! Did not find a secret scanning alert (# $($alert.number)) on initial commit sha: $alertInitialCommitSha that originated from a PR#$PullRequestNumber commit"
+            Write-ActionDebug "NO! Did not find a repo secret scanning alert (# $($alert.number)) on initial commit sha: $alertInitialCommitSha that originated from a PR#$PullRequestNumber commit"
         }
     }
 
@@ -240,10 +241,13 @@ foreach ($alert in $alerts) {
 Write-Progress -Activity "Secret Scanning Alert Search" -Completed
 
 
-#Output an Errror/Warning Actions Annotation for each alert that was found
+#Build output for each alert that was found
+#   * an Errror/Warning Actions annotation 
+#   * add a step summary markdown table row of the alert details
 $numSecretsAlertsDetected = 0
 $numSecretsAlertLocationsDetected = 0
 $shouldFailAction = $false
+$markdownSummaryTableRows = $null
 
 foreach ($alert in $alertsInitiatedFromPr) {
     $numSecretsAlertsDetected++
@@ -263,7 +267,9 @@ foreach ($alert in $alertsInitiatedFromPr) {
             #   -docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
             Write-ActionWarning -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
         }
-    }  
+
+        $markdownSummaryTableRows += "| :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($alert.resolution) | $($location.details.path)#LL$($location.details.start_line)C$($location.details.start_column)-L$($location.details.end_line)C$($location.details.end_column) |`n"
+    }
 }
 
 #TODO - consider outputing this summary to a comment on the PR
@@ -279,19 +285,46 @@ foreach ($alert in $alertsInitiatedFromPr) {
 # }
 
 
+# One line summary of alerts found
+$summary = "Found [$numSecretsAlertsDetected] secret scanning alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit"
+
+#Actions Markdown Summary - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary
+#flashy! - https://github.blog/2022-05-09-supercharging-github-actions-with-job-summaries/
+$markdownSummary =
+@"
+# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET SCANNING REVIEW SUMMARY :unlock: `n
+$summary `n
+"@
+
+#build a markdown table of any alerts
+if ($alertsInitiatedFromPr.Count -gt 0) {
+    
+    $markdownSummary += @"
+`n
+| Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Location 🎯 | `n
+| --- | --- | --- | --- | --- | `n
+`n
+"@
+
+    # MOVED THIS TO EXISTING LOOP ^^
+    # #loop through each alert and add a row to the table
+    # # foreach ($alert in $alertsInitiatedFromPr) {
+    # #     $markdownSummary += "| :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($alert.resolution) | $($alert.locations[0].details.path): $($alert.locations[0].details.start_line): $($alert.locations[0].details.start_column) |`n"
+    # # }
+    $markdownSummary += $markdownSummaryTableRows
+}
+
+# GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
+$env:GITHUB_STEP_SUMMARY += $markdownSummary
+
+#local dev: clear this so subsquent runs don't append to the summary ($env:GITHUB_STEP_SUMMARY = $null)
+#$env:GITHUB_STEP_SUMMARY | Show-Markdown
+Write-ActionDebug "Markdown Summary from env var GITHUB_STEP_SUMMARY:"
+Write-ActionDebug $env:GITHUB_STEP_SUMMARY
+
 #Output Summary and Return exit code 
 # -  any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
 # -  otherwise, return 0
-$summary = 
-@"
-# :unlock: SECRET SCANNING REVIEW SUMMARY :unlock:
-Found [$numSecretsAlertsDetected] alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit
-"@
-
-#https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary
-# TODO - make this flashy! - https://github.blog/2022-05-09-supercharging-github-actions-with-job-summaries/
-$env:GITHUB_STEP_SUMMARY += $summary
-
 if ($alertsInitiatedFromPr.Count -gt 0 -and $shouldFailAction) {
     Set-ActionFailed -Message $summary
 }
