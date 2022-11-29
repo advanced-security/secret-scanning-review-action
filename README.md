@@ -4,8 +4,7 @@ Action to provide feedback annotations to the developer when a Secret Scanning a
 The action is intended for private repositories that have GitHub Advanced Security licensed.
 
 Adds a `Warning` annotation alert to any PR file that has introduced a secret (based on the secret scanning alert initial commit)
-<img width="854" alt="Secret Scanning Review Workflow File Annotation" src="https://user-images.githubusercontent.com/1760475/184815609-58dd4f31-dc08-445a-a692-3b5d4dacbaae.png
-">
+<img width="854" alt="Secret Scanning Review Workflow File Annotation" src="https://user-images.githubusercontent.com/1760475/184815609-58dd4f31-dc08-445a-a692-3b5d4dacbaae.png">
 
 Workflow [FailOnAlert](#failonalert-environment-variable-ssr_fail_on_alert) configuration to turn those `Warnings` into `Errors`!
 <img width="854" alt="Secret Scanning Review Workflow File Annotation" src="https://user-images.githubusercontent.com/1760475/185046387-576fb75b-8a68-4640-94bc-9966f1f3b721.png">
