@@ -186,9 +186,17 @@ Write-ActionInfo "PR#$PullRequestNumber Commit SHA list: $($prCommitShaList -joi
     - note: This endpoint is only available for organizations and repositories in the Enterprise Cloud. 
     - note: This endpoint returns ALL (both: open and resolved) secret scanning alerts.
 #>
-$repoAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts"
+$perPage = 100
+$repoAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage"
 try {
-    $alerts = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl
+    $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl -ExtendedResult $true
+    $alerts = $alertsResponse.result
+    # Get the next page of secret scanning alerts if there is one
+    while ($alertsResponse.nextLink) {
+        $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $alertsResponse.nextLink -ExtendedResult $true
+        $alerts += $alertsResponse.result
+    }
+    Write-ActionInfo "Found $($alerts.Count) secret scanning alerts for '$OrganizationName/$RepositoryName'"
 }
 catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
@@ -203,10 +211,17 @@ foreach ($alert in $alerts) {
     - format: /repos/{owner}/{repo}/secret-scanning/alerts/{alert_number}/locations
     - returns: 1 "location" object per file where secret detected
     - note: details.commit_sha - SHA of the commit where the secret was detected
-    #>
-    $repoAlertLocationUrl = [uri]$alert.locations_url
+    #>    
+    $repoAlertLocationUrl = [uri]"$($alert.locations_url)?per_page=$perPage"
     try {
-        $locations = Invoke-GHRestMethod -Method GET -Uri $repoAlertLocationUrl.AbsolutePath
+        $locationsResult = Invoke-GHRestMethod -Method GET -Uri "$($repoAlertLocationUrl.AbsolutePath)$($repoAlertLocationUrl.Query)" -ExtendedResult $true
+        $locations = $locationsResult.result
+        # Get the next page of secret scanning alert locations if there is one
+        while ($locationsResult.nextLink) {
+            $locationsResult = Invoke-GHRestMethod -Method GET -Uri $locationsResult.nextLink -ExtendedResult $true
+            $locations += $locationsResult.result
+        }
+        Write-ActionInfo "Found $($locations.Count) secret scanning alert locations for alert #$($alert.number)"
     }
     catch {
         Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
@@ -240,7 +255,6 @@ foreach ($alert in $alerts) {
 
 #Clear progress bar and finish
 Write-Progress -Activity "Secret Scanning Alert Search" -Completed
-
 
 #Build output for each alert that was found
 #   * an Errror/Warning Actions annotation 
