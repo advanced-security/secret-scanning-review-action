@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Dependency Review'
-        uses: felickz/secret-scanning-review-action@v0.1.0
+        uses: felickz/secret-scanning-review-action@v0.1.3
         env:
             GITHUB_TOKEN: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
             SSR_FAIL_ON_ALERT: true

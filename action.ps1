@@ -221,7 +221,7 @@ foreach ($alert in $alerts) {
             $locationsResult = Invoke-GHRestMethod -Method GET -Uri $locationsResult.nextLink -ExtendedResult $true
             $locations += $locationsResult.result
         }
-        Write-ActionInfo "Found $($locations.Count) secret scanning alert locations for alert #$($alert.number)"
+        Write-ActionDebug "Found $($locations.Count) secret scanning alert locations for alert #$($alert.number)"
     }
     catch {
         Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
