@@ -1,5 +1,5 @@
 name: 'Secret Scanning Review'
-author: felickz
+author: "@felickz"
 description: 'Increase the visibility of Secret Scanning alerts as part of pull request collaboration'
 #inputs:
 #  FailOnAlert:
@@ -8,10 +8,11 @@ description: 'Increase the visibility of Secret Scanning alerts as part of pull 
 #  FailOnAlertExcludeClosed:
 #    description: A boolean to exclude an alert from FailOnAlert if it is marked as closed (state: 'resolved').
 #    required: false
-#NodeJS entry point for PWSH action
 runs:
-  using: node12
-  main: _init/index.js
+    using: composite
+    steps:
+      - run: ${{ github.action_path }}/action.ps1
+        shell: pwsh
 branding:
   icon: "lock"
   color: "gray-dark"
