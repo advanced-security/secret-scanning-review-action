@@ -16,7 +16,7 @@ inputs:
 runs:
     using: composite
     steps:
-      - run: ${{ github.action_path }}/action.ps1 -token ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }}
+      - run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }}
         shell: pwsh
 branding:
   icon: "lock"
