@@ -52,7 +52,7 @@ jobs:
   secret-scanning-review:
     runs-on: ubuntu-latest
     steps:
-      - name: 'Dependency Review'
+      - name: 'Secret Scanning Review Action'
         uses: felickz/secret-scanning-review-action@v0
         env:
             GITHUB_TOKEN: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
