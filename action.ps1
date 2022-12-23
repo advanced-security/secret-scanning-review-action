@@ -23,6 +23,10 @@ PS> action.ps1
 
 A simple example execution of the internal pwsh script against an Owner/Repo and Pull Request outside of GitHub Action context
 
+.PARAMETER GitHubToken
+        GitHub Token with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+        NOTE: This is not required if the GITHUB_TOKEN environment variable is set.
+
 .PARAMETER FailOnAlert
         If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found.  
         Additionaly, annotations will show as errors (vs default warnings).
@@ -49,7 +53,7 @@ ToDo List
 
 Future Enhancements
     - add summary comment to PR if alert is found (1 comment per PR even if multiple runs?)
-    - further options for FailOnAlert workflow switch
+    - further options for FailOnAlert workflow bool
         - whitelist of resolution types (false_positive, wont_fix, revoked, pattern_edited, pattern_deleted or used_in_tests) - via https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository
         - whitelist of secret types (https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security)
 
@@ -58,8 +62,9 @@ https://github.com/felickz/secret-scanning-review-action
 #>
 
 param(
-    [Switch]$FailOnAlert,
-    [Switch]$FailOnAlertExcludeClosed
+    [string]$GitHubToken,
+    [bool]$FailOnAlert,
+    [bool]$FailOnAlertExcludeClosed
 )
 
 # Handle `Untrusted repository` prompt
@@ -88,11 +93,14 @@ else {
 }
 
 #check if GITHUB_TOKEN is set
-if ($null -eq $env:GITHUB_TOKEN) {
-    Set-ActionFailed -Message "GITHUB_TOKEN is not set"    
+Write-ActionDebug "GitHubToken parameter is $([String]::IsNullOrWhiteSpace($GitHubToken) ? "NOT SET" : "SET" ). $($null -ne $env:GITHUB_TOKEN ? "Overridden by environment variable GITHUB_TOKEN" : $null)" 
+if ($null -ne $env:GITHUB_TOKEN) {
+    $GitHubToken = $env:GITHUB_TOKEN      
+    Write-ActionDebug "GitHubToken is now set from GITHUB_TOKEN environment variable"
 }
-else {
-    Write-ActionDebug "GITHUB_TOKEN is set"
+
+if ([String]::IsNullOrWhiteSpace($GitHubToken)) {
+    Set-ActionFailed -Message "GitHubToken is not set"
 }
 
 #configure github module with authentication token ... sample code taken from example 2 for GitHub Action!
@@ -100,7 +108,7 @@ else {
 
 # Allows you to specify your access token as a plain-text string ("<Your Access Token>")
 # which will be securely stored on the machine for use in all future PowerShell sessions.
-$secureString = ($env:GITHUB_TOKEN | ConvertTo-SecureString -AsPlainText -Force)
+$secureString = ($GitHubToken | ConvertTo-SecureString -AsPlainText -Force)
 $cred = New-Object System.Management.Automation.PSCredential "username is ignored", $secureString
 Set-GitHubAuthentication -Credential $cred
 $secureString = $null # clear this out now that it's no longer needed
@@ -111,7 +119,7 @@ $actionRepo = Get-ActionRepo
 $OrganizationName = $actionRepo.Owner
 $RepositoryName = $actionRepo.Repo
 
-# Init FailOnAlert switch
+# Init FailOnAlert bool
 # workaround - read $FailOnAlert from the environment variable
 Write-ActionDebug "FailOnAlert is set to '$FailOnAlert'. $($null -ne $env:SSR_FAIL_ON_ALERT ? "Overridden by environment variable SSR_FAIL_ON_ALERT: '$env:SSR_FAIL_ON_ALERT'" : $null)" 
 if ($null -ne $env:SSR_FAIL_ON_ALERT) {
@@ -123,7 +131,7 @@ if ($null -ne $env:SSR_FAIL_ON_ALERT) {
     }
 }
 
-# Init FailOnAlertExcludeClosed switch
+# Init FailOnAlertExcludeClosed bool
 # workaround - read $FailOnAlertExcludeClosed from the environment variable
 Write-ActionDebug "FailOnAlertExcludeClosed is set to '$FailOnAlertExcludeClosed'. $($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED ? "Overridden by environment variable SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: '$env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED'" : $null)" 
 if ($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED) {

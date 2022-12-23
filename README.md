@@ -29,11 +29,23 @@ This action is used to enhance the Advanced Security Secret Scanning experience 
 
 ## Configuration Options
 
-### `FailOnAlert` (environment variable: SSR_FAIL_ON_ALERT)
-**OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `"false"`. Currently only works with GitHub Actions as an environment variable SSR_FAIL_ON_ALERT: true
+### `token` 
+**REQUIRED** A GitHub Access Token
+   * Classic Tokens
+      *  repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+   * Fine-grained personal access token permissions
+      * Read-Only - [Secret Scanning Alerts](https://docs.github.com/en/rest/overview/permissions-required-for-fine-grained-personal-access-tokens#secret-scanning-alerts)
+      * Read-Only - [Pull requests](https://docs.github.com/en/rest/overview/permissions-required-for-fine-grained-personal-access-tokens#pull-requests). Not required for public repositories.
 
-### `FailOnAlertExcludeClosed` (environment variable: SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED)
-**OPTIONAL** If provided, will handle failure exit code / annotations as warnings if the alert is found and the alert is marked as closed (state: 'resolved'). Default `"false"`. Currently only works with GitHub Actions as an environment variable SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: true
+NOTE:
+   * Unfortunately we cannot currently utilize the built in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) due to ommitted permissions on the `secret-scanning` api.  Therefore you must generate a token (PAT or GitHub App) with these permissions, add the token as a secret in your repository, and assign the secret to the workflow parameter. See Also: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
+   * It is worth noting this token will have `sensitive` data access to return a list of plain text secrets that have been detected in your organization/repository.  At this point, a detected secret also implies anyone with read repository access would provide the same level of access to the leaked secret and therefore should be considered compromised.
+
+### `fail-on-alert`
+**OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `"false"`.
+
+### `fail-on-alert-exclude-closed`
+**OPTIONAL** If provided, will handle failure exit code / annotations as warnings if the alert is found and the alert is marked as closed (state: 'resolved'). Default `"false"`.
 
 ## Outputs
 N/A
@@ -54,14 +66,14 @@ jobs:
     steps:
       - name: 'Secret Scanning Review Action'
         uses: felickz/secret-scanning-review-action@v0
-        env:
-            GITHUB_TOKEN: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
-            SSR_FAIL_ON_ALERT: true
-            SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: true
+        with:
+          token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
+          fail-on-alert: true
+          fail-on-alert-exclude-closed: true
 ```
 
 # Architecture
-* PowerShell based script wrapped in a GitHub NodeJS action
+* A GitHub [composite action](https://docs.github.com/en/actions/creating-actions/creating-a-composite-action) wrapping a PowerShell script.
 
 ```mermaid
 sequenceDiagram
@@ -103,40 +115,25 @@ sequenceDiagram
     Note right of PR: Fail workflow check<br/>based on FailOnAlert setting.
 ```
 
-## Required Credentials
-* [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) 
-   * Classic Tokens
-      *  repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
-   * Fine-grained personal access token permissions
-      * Read-Only - [Secret Scanning Alerts](https://docs.github.com/en/rest/overview/permissions-required-for-fine-grained-personal-access-tokens#secret-scanning-alerts)
-      * Read-Only - [Pull requests](https://docs.github.com/en/rest/overview/permissions-required-for-fine-grained-personal-access-tokens#pull-requests)
-
-NOTE:
-   * Unfortunately we cannot currently utilize the built in Actions `GITHUB_TOKEN` due to ommitted permissions on the `secret-scanning` api.  Therefore you must generate a token (PAT or GitHub App) with these permissions, add the token as a secret in your repository, and assign the secret to the env variable in the workflow. See [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
-   * It is worth noting this token will have `sensitive` data access to return a list of plain text secrets that have been detected in your organization/repository.  At this point, a detected secret also implies anyone with read repository access would provide the same level of access to the leaked secret and therefore should be considered compromised.
-
 ## Environment Variables
-* Required
-  * GITHUB_TOKEN - token used to invoke REST APIs
 * Implicit
   * GITHUB_REPOSITORY - The owner / repository name.
   * GITHUB_REF - PR merge branch refs/pull/:prNumber/merge
-* Optional
-  * SSR_FAIL_ON_ALERT - overrides the FailOnAlert input 
-  * SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED - overrides the FailOnAlertExcludeClosed input
+* Deprecated (previous inputs now supported via action workflow input parameters)
+  * GITHUB_TOKEN - token used to invoke REST APIs
+  * SSR_FAIL_ON_ALERT - overrides the `fail-on-alert` input parameter
+  * SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED - overrides the `fail-on-alert-exclude-closed` input parameter
 * Outputs
   * GITHUB_STEP_SUMMARY - Markdown for each job so that it will be displayed on the summary page of a workflow run (unique for each step in a job)
 
 ## Dependencies
 * GitHub Dependencies
     * GitHub [REST APIs](#rest-apis)
-    * `pwsh-github-action-base` ([Repo](https://github.com/ebekker/pwsh-github-action-base)) PowerShell Actions Wrapper Template
-        * by [@ebekker](https://github.com/ebekker/)
 * Powershell Dependencies
-    * `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub/0.16.1) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
+    * `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
         * by [@microsoft](https://github.com/microsoft)
         * NOTE: [Telemetry is collected via Application Insights](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry)
-    * `GitHubActions` ([Gallery](https://www.powershellgallery.com/packages/GitHubActions/1.0.0.3) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
+    * `GitHubActions` ([Gallery](https://www.powershellgallery.com/packages/GitHubActions) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
         * by [@ebekker](https://github.com/ebekker/)
 
 ## REST APIs
