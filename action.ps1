@@ -49,7 +49,7 @@ ToDo List
 
 Future Enhancements
     - add summary comment to PR if alert is found (1 comment per PR even if multiple runs?)
-    - further options for FailOnAlert workflow switch
+    - further options for FailOnAlert workflow bool
         - whitelist of resolution types (false_positive, wont_fix, revoked, pattern_edited, pattern_deleted or used_in_tests) - via https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository
         - whitelist of secret types (https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security)
 
@@ -58,8 +58,8 @@ https://github.com/felickz/secret-scanning-review-action
 #>
 
 param(
-    [Switch]$FailOnAlert,
-    [Switch]$FailOnAlertExcludeClosed
+    [bool]$FailOnAlert,
+    [bool]$FailOnAlertExcludeClosed
 )
 
 # Handle `Untrusted repository` prompt
@@ -111,7 +111,7 @@ $actionRepo = Get-ActionRepo
 $OrganizationName = $actionRepo.Owner
 $RepositoryName = $actionRepo.Repo
 
-# Init FailOnAlert switch
+# Init FailOnAlert bool
 # workaround - read $FailOnAlert from the environment variable
 Write-ActionDebug "FailOnAlert is set to '$FailOnAlert'. $($null -ne $env:SSR_FAIL_ON_ALERT ? "Overridden by environment variable SSR_FAIL_ON_ALERT: '$env:SSR_FAIL_ON_ALERT'" : $null)" 
 if ($null -ne $env:SSR_FAIL_ON_ALERT) {
@@ -123,7 +123,7 @@ if ($null -ne $env:SSR_FAIL_ON_ALERT) {
     }
 }
 
-# Init FailOnAlertExcludeClosed switch
+# Init FailOnAlertExcludeClosed bool
 # workaround - read $FailOnAlertExcludeClosed from the environment variable
 Write-ActionDebug "FailOnAlertExcludeClosed is set to '$FailOnAlertExcludeClosed'. $($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED ? "Overridden by environment variable SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: '$env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED'" : $null)" 
 if ($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED) {

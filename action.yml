@@ -1,17 +1,19 @@
 name: 'Secret Scanning Review'
 author: "@felickz"
 description: 'Increase the visibility of Secret Scanning alerts as part of pull request collaboration'
-#inputs:
-#  FailOnAlert:
-#    description: A boolean to raise workflow/annotation error(instead of warning) if alert is detected.
-#    required: false
-#  FailOnAlertExcludeClosed:
-#    description: A boolean to exclude an alert from FailOnAlert if it is marked as closed (state: 'resolved').
-#    required: false
+inputs:
+ FailOnAlert:
+  description: 'A boolean to raise workflow/annotation error(instead of warning) if alert is detected.'
+  required: false
+  default: 'false'
+ FailOnAlertExcludeClosed:
+  description: "A boolean to exclude an alert from FailOnAlert if it is marked as closed (state: 'resolved')."
+  required: false
+  default: 'false'
 runs:
     using: composite
     steps:
-      - run: ${{ github.action_path }}/action.ps1
+      - run: ${{ github.action_path }}/action.ps1 -FailOnAlert $${{ inputs.FailOnAlert }} -FailOnAlertExcludeClosed $${{ inputs.FailOnAlertExcludeClosed }}
         shell: pwsh
 branding:
   icon: "lock"
