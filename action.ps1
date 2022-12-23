@@ -23,6 +23,10 @@ PS> action.ps1
 
 A simple example execution of the internal pwsh script against an Owner/Repo and Pull Request outside of GitHub Action context
 
+.PARAMETER GitHubToken
+        GitHub Token with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+        NOTE: This is not required if the GITHUB_TOKEN environment variable is set.
+
 .PARAMETER FailOnAlert
         If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found.  
         Additionaly, annotations will show as errors (vs default warnings).
@@ -58,6 +62,7 @@ https://github.com/felickz/secret-scanning-review-action
 #>
 
 param(
+    [string]$GitHubToken,
     [bool]$FailOnAlert,
     [bool]$FailOnAlertExcludeClosed
 )
@@ -88,11 +93,14 @@ else {
 }
 
 #check if GITHUB_TOKEN is set
-if ($null -eq $env:GITHUB_TOKEN) {
-    Set-ActionFailed -Message "GITHUB_TOKEN is not set"    
+Write-ActionDebug "GitHubToken parameter is $([String]::IsNullOrWhiteSpace($GitHubToken) ? "NOT SET" : "SET" ). $($null -ne $env:GITHUB_TOKEN ? "Overridden by environment variable GITHUB_TOKEN" : $null)" 
+if ($null -ne $env:GITHUB_TOKEN) {
+    $GitHubToken = $env:GITHUB_TOKEN      
+    Write-ActionDebug "GitHubToken is now set from GITHUB_TOKEN environment variable"
 }
-else {
-    Write-ActionDebug "GITHUB_TOKEN is set"
+
+if ([String]::IsNullOrWhiteSpace($GitHubToken)) {
+    Set-ActionFailed -Message "GitHubToken is not set"
 }
 
 #configure github module with authentication token ... sample code taken from example 2 for GitHub Action!
@@ -100,7 +108,7 @@ else {
 
 # Allows you to specify your access token as a plain-text string ("<Your Access Token>")
 # which will be securely stored on the machine for use in all future PowerShell sessions.
-$secureString = ($env:GITHUB_TOKEN | ConvertTo-SecureString -AsPlainText -Force)
+$secureString = ($GitHubToken | ConvertTo-SecureString -AsPlainText -Force)
 $cred = New-Object System.Management.Automation.PSCredential "username is ignored", $secureString
 Set-GitHubAuthentication -Credential $cred
 $secureString = $null # clear this out now that it's no longer needed
