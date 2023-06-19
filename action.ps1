@@ -58,7 +58,7 @@ Future Enhancements
         - whitelist of secret types (https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security)
 
 .LINK
-https://github.com/felickz/secret-scanning-review-action
+https://github.com/advanced-security/secret-scanning-review-action
 #>
 
 param(
