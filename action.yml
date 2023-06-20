@@ -1,4 +1,4 @@
-name: 'Secret Scanning Review'
+name: 'Secret Scanning Review Action'
 author: "@felickz"
 description: 'Increase the visibility of Secret Scanning alerts as part of pull request collaboration'
 inputs:
