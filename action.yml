@@ -4,7 +4,7 @@ description: 'Increase the visibility of Secret Scanning alerts as part of pull 
 inputs:
   token:
     description: 'GitHub Access Token that provides access to the repository. Must be provided via either parameter or environment variable. The github.token cannot be used as it does not provide secret scanning alert access.'
-    required: false #TODO: make this required once the feature is GA (breaking change vs initial env var approach)    
+    required: false #TODO: make this required once the feature is GA (breaking change vs initial env var approach)
   fail-on-alert:
     description: 'A boolean to raise workflow/annotation error(instead of warning) if alert is detected.'
     required: false
@@ -13,10 +13,14 @@ inputs:
     description: "A boolean to exclude an alert from FailOnAlert if it is marked as closed (state: 'resolved')."
     required: false
     default: 'false'
+  disable-pr-comment:
+    description: 'A boolean to disable the PR comment feature.'
+    required: false
+    default: 'false'
 runs:
     using: composite
     steps:
-      - run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }}
+      - run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }}
         shell: pwsh
 branding:
   icon: "lock"

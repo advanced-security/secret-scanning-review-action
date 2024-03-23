@@ -10,7 +10,7 @@ Requirements:
 - GITHUB_TOKEN with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
 
 .EXAMPLE
-PS>gh auth token # <-- Easy to grab a local auth token to test with from here!
+PS>gh auth login --scopes repo # <-- Easy to grab a local auth token to test with from here!6
 PS>Write-Host "initializing local run! Ensure you provide a valid GITHUB_TOKEN otherwise you will get a 401!!! "
 $VerbosePreference = 'SilentlyContinue'
 $env:GITHUB_TOKEN = gh auth token
@@ -28,15 +28,19 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         NOTE: This is not required if the GITHUB_TOKEN environment variable is set.
 
 .PARAMETER FailOnAlert
-        If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found.  
+        If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found.
         Additionaly, annotations will show as errors (vs default warnings).
-        Default is false. 
+        Default is false.
         NOTE: Currently only works with GitHub Actions as an environment variable SSR_FAIL_ON_ALERT: true
 
 .PARAMETER FailOnAlertExcludeClosed
-        If provided, will handle failure exit code / annotations as warnings if the alert is found and the alert is marked as closed (state: 'resolved').        
-        Default is false. 
+        If provided, will handle failure exit code / annotations as warnings if the alert is found and the alert is marked as closed (state: 'resolved').
+        Default is false.
         NOTE: Currently only works with GitHub Actions as an environment variable SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: true
+
+.PARAMETER DisablePRComment
+        If provided, will disable the PR comment feature.
+        Default is false.
 
 .NOTES
 Features
@@ -46,9 +50,9 @@ Features
     - PR File Annotations - https://github.com/actions/toolkit/tree/main/packages/core#annotations
         - warning message - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-a-warning-message
 
-ToDo List 
+ToDo List
    - filter out alerts that are before the first commit of the PR
-   - graphQL instead of iterating over rest api / or parallel api calls   
+   - graphQL instead of iterating over rest api / or parallel api calls
    - param vs env var (js script enhancement) ... ex's : https://docs.github.com/en/actions/security-guides/automatic-token-authentication#modifying-the-permissions-for-the-github_token
 
 Future Enhancements
@@ -64,7 +68,8 @@ https://github.com/advanced-security/secret-scanning-review-action
 param(
     [string]$GitHubToken,
     [bool]$FailOnAlert,
-    [bool]$FailOnAlertExcludeClosed
+    [bool]$FailOnAlertExcludeClosed,
+    [bool]$DisablePRComment
 )
 
 # Handle `Untrusted repository` prompt
@@ -93,9 +98,9 @@ else {
 }
 
 #check if GITHUB_TOKEN is set
-Write-ActionDebug "GitHubToken parameter is $([String]::IsNullOrWhiteSpace($GitHubToken) ? "NOT SET" : "SET" ). $($null -ne $env:GITHUB_TOKEN ? "Overridden by environment variable GITHUB_TOKEN" : $null)" 
+Write-ActionDebug "GitHubToken parameter is $([String]::IsNullOrWhiteSpace($GitHubToken) ? "NOT SET" : "SET" ). $($null -ne $env:GITHUB_TOKEN ? "Overridden by environment variable GITHUB_TOKEN" : $null)"
 if ($null -ne $env:GITHUB_TOKEN) {
-    $GitHubToken = $env:GITHUB_TOKEN      
+    $GitHubToken = $env:GITHUB_TOKEN
     Write-ActionDebug "GitHubToken is now set from GITHUB_TOKEN environment variable"
 }
 
@@ -111,8 +116,7 @@ if ([String]::IsNullOrWhiteSpace($GitHubToken)) {
 $secureString = ($GitHubToken | ConvertTo-SecureString -AsPlainText -Force)
 $cred = New-Object System.Management.Automation.PSCredential "username is ignored", $secureString
 Set-GitHubAuthentication -Credential $cred
-$secureString = $null # clear this out now that it's no longer needed
-$cred = $null # clear this out now that it's no longer needed
+$GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
 #Init Owner/Repo/PR variables+
 $actionRepo = Get-ActionRepo
@@ -121,10 +125,10 @@ $RepositoryName = $actionRepo.Repo
 
 # Init FailOnAlert bool
 # workaround - read $FailOnAlert from the environment variable
-Write-ActionDebug "FailOnAlert is set to '$FailOnAlert'. $($null -ne $env:SSR_FAIL_ON_ALERT ? "Overridden by environment variable SSR_FAIL_ON_ALERT: '$env:SSR_FAIL_ON_ALERT'" : $null)" 
+Write-ActionDebug "FailOnAlert is set to '$FailOnAlert'. $($null -ne $env:SSR_FAIL_ON_ALERT ? "Overridden by environment variable SSR_FAIL_ON_ALERT: '$env:SSR_FAIL_ON_ALERT'" : $null)"
 if ($null -ne $env:SSR_FAIL_ON_ALERT) {
     try {
-        $FailOnAlert = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT) 
+        $FailOnAlert = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT)
     }
     catch [FormatException] {
         $FailOnAlert = $false
@@ -133,10 +137,10 @@ if ($null -ne $env:SSR_FAIL_ON_ALERT) {
 
 # Init FailOnAlertExcludeClosed bool
 # workaround - read $FailOnAlertExcludeClosed from the environment variable
-Write-ActionDebug "FailOnAlertExcludeClosed is set to '$FailOnAlertExcludeClosed'. $($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED ? "Overridden by environment variable SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: '$env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED'" : $null)" 
+Write-ActionDebug "FailOnAlertExcludeClosed is set to '$FailOnAlertExcludeClosed'. $($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED ? "Overridden by environment variable SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: '$env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED'" : $null)"
 if ($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED) {
     try {
-        $FailOnAlertExcludeClosed = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED) 
+        $FailOnAlertExcludeClosed = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED)
     }
     catch [FormatException] {
         $FailOnAlertExcludeClosed = $false
@@ -149,13 +153,13 @@ if ($env:GITHUB_REF -match 'refs/pull/([0-9]+)') {
 }
 else {
     #https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request
-    Set-ActionFailed -Message "Action workflow must be run on 'pull_request'.  GITHUB_REF is not set to a pull request number"    
+    Set-ActionFailed -Message "Action workflow must be run on 'pull_request'.  GITHUB_REF is not set to a pull request number"
 }
 
 #Default Org / Repo for all GH api calls
 Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryName $RepositoryName
 
-<# API: GET PR  
+<# API: GET PR
     - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#get-a-pull-request
     - format: /repos/{owner}/{repo}/pulls/{pull_number}
 #>
@@ -167,7 +171,7 @@ catch {
 }
 Write-ActionInfo "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commits"
 
-<# API: GET PR Commits  
+<# API: GET PR Commits
     - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request
     - format: /repos/{owner}/{repo}/pulls/{pull_number}/commits
 #>
@@ -191,7 +195,7 @@ Write-ActionInfo "PR#$PullRequestNumber Commit SHA list: $($prCommitShaList -joi
 <# API: GET Secret Scanning Alerts
     - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository
     - format: /repos/{owner}/{repo}/secret-scanning/alerts
-    - note: This endpoint is only available for organizations and repositories in the Enterprise Cloud. 
+    - note: This endpoint is only available for organizations and repositories in the Enterprise Cloud.
     - note: This endpoint returns ALL (both: open and resolved) secret scanning alerts.
 #>
 $perPage = 100
@@ -214,12 +218,12 @@ catch {
 $alertCount = 0
 $alertsInitiatedFromPr = @()
 foreach ($alert in $alerts) {
-    <# API: GET Secret Scanning Alert List Locations 
+    <# API: GET Secret Scanning Alert List Locations
     - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert
     - format: /repos/{owner}/{repo}/secret-scanning/alerts/{alert_number}/locations
     - returns: 1 "location" object per file where secret detected
     - note: details.commit_sha - SHA of the commit where the secret was detected
-    #>    
+    #>
     $repoAlertLocationUrl = [uri]"$($alert.locations_url)?per_page=$perPage"
     try {
         $locationsResult = Invoke-GHRestMethod -Method GET -Uri "$($repoAlertLocationUrl.AbsolutePath)$($repoAlertLocationUrl.Query)" -ExtendedResult $true
@@ -236,7 +240,7 @@ foreach ($alert in $alerts) {
     }
 
     $locationMatches = @()
-    foreach ($location in $locations) {        
+    foreach ($location in $locations) {
         $alertInitialCommitSha = $location.details.commit_sha
 
         #if alertInitialCommitSha in list of commit shas, then add location to list to further add to the alert list
@@ -254,7 +258,7 @@ foreach ($alert in $alerts) {
         $null = $alert | Add-Member -MemberType NoteProperty -Name 'locations' -Value $locationMatches -PassThru
         $alertsInitiatedFromPr += $alert
     }
-   
+
     #output progress
     $alertCount++
     $progress = [math]::Round(($alertCount / $alerts.count) * 100, 0)
@@ -265,7 +269,7 @@ foreach ($alert in $alerts) {
 Write-Progress -Activity "Secret Scanning Alert Search" -Completed
 
 #Build output for each alert that was found
-#   * an Errror/Warning Actions annotation 
+#   * an Errror/Warning Actions annotation
 #   * add a step summary markdown table row of the alert details
 $numSecretsAlertsDetected = 0
 $numSecretsAlertLocationsDetected = 0
@@ -274,9 +278,9 @@ $markdownSummaryTableRows = $null
 
 foreach ($alert in $alertsInitiatedFromPr) {
     $numSecretsAlertsDetected++
-    foreach ($location in $alert.locations) {                
+    foreach ($location in $alert.locations) {
         $numSecretsAlertLocationsDetected++
-        $message = "A $($alert.state -eq 'resolved' ? "Closed as '$($alert.resolution)'" : 'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)). '$($alert.secret_type_display_name)' Secret: $($alert.html_url) Commit: $($pr.html_url)/commits/$($location.details.commit_sha)"        
+        $message = "A $($alert.state -eq 'resolved' ? "Closed as '$($alert.resolution)'" : 'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)). '$($alert.secret_type_display_name)' Secret: $($alert.html_url) Commit: $($pr.html_url)/commits/$($location.details.commit_sha)"
         $shouldBypass = ($alert.state -eq 'resolved') -and $FailOnAlertExcludeClosed
 
         if ($FailOnAlert -and !$shouldBypass) {
@@ -297,19 +301,6 @@ foreach ($alert in $alertsInitiatedFromPr) {
     }
 }
 
-#TODO - consider outputing this summary to a comment on the PR
-# #Add 1 time comment to PR with summary of alerts found
-# $comment = @{
-#     body = "Found $numSecretsAlertsDetected secret scanning alerts in this Pull Request.  $numSecretsAlertLocationsDetected of those alerts were detected in this Pull Request."
-# }
-# $commentUrl = "/repos/$OrganizationName/$RepositoryName/pulls/$PullRequestNumber/comments"
-# try {
-#     $comment = Invoke-GHRestMethod -Method POST -Uri $commentUrl -Body $comment
-# } catch {
-#     Set-ActionFailed -Message "Error adding comment to '$OrganizationName/$RepositoryName' Pull Request#$PullRequestNumber.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
-# }
-
-
 # One line summary of alerts found
 $summary = "$($numSecretsAlertsDetected -gt 0 ? '🚨' : '👍') Found [$numSecretsAlertsDetected] secret scanning alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit"
 
@@ -319,7 +310,7 @@ $markdownSummary = "# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET S
 
 #build a markdown table of any alerts
 if ($alertsInitiatedFromPr.Count -gt 0) {
-    
+
     $markdownSummary += @"
 | Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Commit #️⃣ |
 | --- | --- | --- | --- | --- | --- | --- |`n
@@ -328,13 +319,45 @@ if ($alertsInitiatedFromPr.Count -gt 0) {
     $markdownSummary += $markdownSummaryTableRows
 }
 
+# PR Comment Summary
+if (!$DisablePRComment) {
+    $commentUrl = "/repos/$OrganizationName/$RepositoryName/issues/$PullRequestNumber/comments?per_page=100"
+    try {
+        $comments = Invoke-GHRestMethod -Method GET -Uri $commentUrl
+    }
+    catch {
+        Set-ActionFailed -Message "Error reading comment from '$OrganizationName/$RepositoryName' Pull Request#$PullRequestNumber.  Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+    }
+
+    $prCommentWatermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
+    $existingComment = $comments | Where-Object { $_.body -match $prCommentWatermark } | Select-Object -First 1
+    $comment = @{
+        body = "{0}`n{1}`n<!-- {2} -->" -f $prCommentWatermark, $markdownSummary, (Get-Date).ToUniversalTime().ToString("o")
+    }
+    try {
+        if ($null -ne $existingComment) {
+            $commentResponse = Invoke-GHRestMethod -Method PATCH -Uri $existingComment.url -Body $($comment | ConvertTo-Json)
+        }
+        else {
+            $commentResponse = Invoke-GHRestMethod -Method POST -Uri $commentUrl -Body $($comment | ConvertTo-Json)
+        }
+        Write-ActionInfo "Updated PR Comment: $($commentResponse.html_url)"
+    }
+    catch {
+        Set-ActionFailed -Message "Error adding comment to '$OrganizationName/$RepositoryName' Pull Request#$PullRequestNumber.  Ensure GITHUB_TOKEN has `pull_requests:write` repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+    }
+}
+else {
+    Write-ActionDebug "DisablePRComment is set to $DisablePRComment, skipping PR comment update"
+}
+
 #Output Step Summary - To the GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
-$markdownSummary > $env:GITHUB_STEP_SUMMARY 
+$markdownSummary > $env:GITHUB_STEP_SUMMARY
 #Get-Item -Path $env:GITHUB_STEP_SUMMARY | Show-Markdown
 Write-ActionDebug "Markdown Summary from env var GITHUB_STEP_SUMMARY: '$env:GITHUB_STEP_SUMMARY' "
 Write-ActionDebug $(Get-Content $env:GITHUB_STEP_SUMMARY)
 
-#Output Message Summary and set exit code 
+#Output Message Summary and set exit code
 # -  any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
 # -  otherwise, return 0
 if ($alertsInitiatedFromPr.Count -gt 0 -and $shouldFailAction) {
