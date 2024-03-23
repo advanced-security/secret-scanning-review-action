@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Secret Scanning Review Action'
-        uses: advanced-security/secret-scanning-review-action@v0
+        uses: advanced-security/secret-scanning-review-action@v1
         with:
           token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
           fail-on-alert: true
@@ -128,10 +128,6 @@ sequenceDiagram
 * Implicit
   * GITHUB_REPOSITORY - The owner / repository name.
   * GITHUB_REF - PR merge branch refs/pull/:prNumber/merge
-* Deprecated (previous inputs now supported via action workflow input parameters - new functionality will not use this)
-  * GITHUB_TOKEN - token used to invoke REST APIs
-  * SSR_FAIL_ON_ALERT - overrides the `fail-on-alert` input parameter
-  * SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED - overrides the `fail-on-alert-exclude-closed` input parameter
 * Outputs
   * GITHUB_STEP_SUMMARY - Markdown for each job so that it will be displayed on the summary page of a workflow run (unique for each step in a job)
 

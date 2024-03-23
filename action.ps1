@@ -123,30 +123,6 @@ $actionRepo = Get-ActionRepo
 $OrganizationName = $actionRepo.Owner
 $RepositoryName = $actionRepo.Repo
 
-# Init FailOnAlert bool
-# workaround - read $FailOnAlert from the environment variable
-Write-ActionDebug "FailOnAlert is set to '$FailOnAlert'. $($null -ne $env:SSR_FAIL_ON_ALERT ? "Overridden by environment variable SSR_FAIL_ON_ALERT: '$env:SSR_FAIL_ON_ALERT'" : $null)"
-if ($null -ne $env:SSR_FAIL_ON_ALERT) {
-    try {
-        $FailOnAlert = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT)
-    }
-    catch [FormatException] {
-        $FailOnAlert = $false
-    }
-}
-
-# Init FailOnAlertExcludeClosed bool
-# workaround - read $FailOnAlertExcludeClosed from the environment variable
-Write-ActionDebug "FailOnAlertExcludeClosed is set to '$FailOnAlertExcludeClosed'. $($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED ? "Overridden by environment variable SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: '$env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED'" : $null)"
-if ($null -ne $env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED) {
-    try {
-        $FailOnAlertExcludeClosed = [System.Convert]::ToBoolean($env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED)
-    }
-    catch [FormatException] {
-        $FailOnAlertExcludeClosed = $false
-    }
-}
-
 #get the pull request number from the GITHUB_REF environment variable
 if ($env:GITHUB_REF -match 'refs/pull/([0-9]+)') {
     $PullRequestNumber = $matches[1]
@@ -321,6 +297,10 @@ if ($alertsInitiatedFromPr.Count -gt 0) {
 
 # PR Comment Summary
 if (!$DisablePRComment) {
+    <# API: GET PR COMMENTS
+    - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment
+    - format: /repos/{owner}/{repo}/issues/{pull_number}/comments
+    #>
     $commentUrl = "/repos/$OrganizationName/$RepositoryName/issues/$PullRequestNumber/comments?per_page=100"
     try {
         $comments = Invoke-GHRestMethod -Method GET -Uri $commentUrl
