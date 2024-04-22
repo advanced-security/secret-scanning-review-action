@@ -11,6 +11,8 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    permissions:
+          checks:write
     steps:
 
       - name: checkout
@@ -53,6 +55,8 @@ jobs:
   ## For testing out tests on Windows
   build-on-win:
     runs-on: windows-latest
+    permissions:
+      checks:write
     continue-on-error: true
     steps:
 
