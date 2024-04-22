@@ -17,7 +17,7 @@ Describe 'Set-ActionVariable' {
         if (-not $Expected) {
             $Expected = "::set-env name=$($Name)::$($Value)$EOL"
         }
-        
+
         $output = Set-ActionVariable $Name $Value -SkipLocal
         $output | Should -Be $Expected
         [System.Environment]::GetEnvironmentVariable($Name) | Should -BeNullOrEmpty
@@ -28,7 +28,7 @@ Describe 'Set-ActionVariable' {
         if (-not $Expected) {
             $Expected = "::set-env name=$($Name)::$($Value)$EOL"
         }
-        
+
         Set-ActionVariable $Name $Value | Should -Be $Expected
         [System.Environment]::GetEnvironmentVariable($Name) | Should -Be $Value
     }
