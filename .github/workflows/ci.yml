@@ -11,7 +11,7 @@ jobs:
     steps:
 
       - name: checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
       
       - name: pester tests
         uses: zyborg/pester-tests-report@v1.2.0
@@ -54,7 +54,7 @@ jobs:
     steps:
 
       - name: checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
       
       - name: pester tests
         uses: zyborg/pester-tests-report@v1.2.0
