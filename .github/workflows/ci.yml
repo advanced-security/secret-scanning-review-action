@@ -4,6 +4,9 @@ name: CI
 on:
   push
 
+#TODO What permission is need here to attach artifact to workflow run: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#defining-access-for-the-github_token-scopes
+permissions: {}
+
 jobs:
 
   build:
