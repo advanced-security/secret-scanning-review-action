@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-          checks:write
+      checks: write
     steps:
 
       - name: checkout
@@ -56,7 +56,7 @@ jobs:
   build-on-win:
     runs-on: windows-latest
     permissions:
-      checks:write
+      checks: write
     continue-on-error: true
     steps:
 
