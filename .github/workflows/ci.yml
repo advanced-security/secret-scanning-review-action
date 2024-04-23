@@ -17,9 +17,9 @@ jobs:
 
       - name: checkout
         uses: actions/checkout@v4
-      
+
       - name: pester tests
-        uses: zyborg/pester-tests-report@v1.5.0
+        uses: zyborg/pester-tests-report@bb711b31e93f78f7423086d57f81928325829765 # v1.5.0
         with:
           include_paths: ./tests/GitHubActions_tests.ps1
           exclude_tags: SkipCI
@@ -62,9 +62,9 @@ jobs:
 
       - name: checkout
         uses: actions/checkout@v4
-      
+
       - name: pester tests
-        uses: zyborg/pester-tests-report@v1.5.0
+        uses: zyborg/pester-tests-report@bb711b31e93f78f7423086d57f81928325829765 # v1.5.0
         with:
           include_paths: ./tests/GitHubActions_tests.ps1
           exclude_tags: SkipCI
