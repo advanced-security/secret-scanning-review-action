@@ -4,10 +4,15 @@ name: CI
 on:
   push
 
+#TODO What permission is need here to attach artifact to workflow run: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#defining-access-for-the-github_token-scopes
+permissions: {}
+
 jobs:
 
   build:
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
     steps:
 
       - name: checkout
@@ -50,6 +55,8 @@ jobs:
   ## For testing out tests on Windows
   build-on-win:
     runs-on: windows-latest
+    permissions:
+      checks: write
     continue-on-error: true
     steps:
 
