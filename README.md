@@ -1,3 +1,17 @@
+![GitHub](https://img.shields.io/badge/github-%23121011.svg?logo=github&logoColor=white)
+![GitHub Issues](https://img.shields.io/github/issues/advanced-security/secret-scanning-review-action)
+![GitHub Issues](https://img.shields.io/github/issues-pr/advanced-security/secret-scanning-review-action)
+![GitHub Issues](https://img.shields.io/github/issues-pr-closed/advanced-security/secret-scanning-review-action)
+![GitHub Stars](https://img.shields.io/github/stars/advanced-security/secret-scanning-review-action)
+![GitHub forks](https://img.shields.io/github/forks/advanced-security/secret-scanning-review-action)
+
+
+[![Latest](https://img.shields.io/github/release/advanced-security/secret-scanning-review-action.svg)](https://github.com/advanced-security/secret-scanning-review-action/releases) 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/advanced-security/secret-scanning-review-action/badge)](https://scorecard.dev/viewer/?uri=github.com/advanced-security/secret-scanning-review-action)
+![GitHub License](https://img.shields.io/github/license/advanced-security/secret-scanning-review-action)
+
+
+
 # secret-scanning-review-action
 Action to provide feedback annotations to the developer when a Secret Scanning alert is initially detected in a PR commit.
 
