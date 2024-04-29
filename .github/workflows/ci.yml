@@ -21,7 +21,7 @@ jobs:
       - name: pester tests
         uses: zyborg/pester-tests-report@bb711b31e93f78f7423086d57f81928325829765 # v1.5.0
         with:
-          include_paths: ./tests/GitHubActions_tests.ps1
+          include_paths: ./tests/action_tests.ps1
           exclude_tags: SkipCI
           report_name: action_base_tests
           report_title: Action Base Tests
@@ -66,7 +66,7 @@ jobs:
       - name: pester tests
         uses: zyborg/pester-tests-report@bb711b31e93f78f7423086d57f81928325829765 # v1.5.0
         with:
-          include_paths: ./tests/GitHubActions_tests.ps1
+          include_paths: ./tests/action_tests.ps1
           exclude_tags: SkipCI
           report_name: action_base_tests-on-win
           report_title: Action Base Tests (On Windows)
