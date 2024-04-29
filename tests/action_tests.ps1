@@ -8,7 +8,7 @@ Describe "Require a token" {
         #$env:GITHUB_TOKEN = 'test_token'
 
         # Run the script and capture the exit code
-        $output = .\..\action.ps1
+        $output = ./../action.ps1
     }
 
     It "action.ps1 should fail and require a token" {
@@ -37,7 +37,7 @@ Describe "Install Dependencies" {
 
 
         # Run the script and capture the exit code
-        $output = .\..\action.ps1
+        $output = ./../action.ps1
     }
 
 
@@ -92,7 +92,7 @@ Describe "Mocked Tests" {
 
     #     It "GitHubActions module is installed" {
     #         # Run the script and capture the exit code
-    #         $output = & .\..\action.ps1 -GitHubToken 'test_token'
+    #         $output = & ./../action.ps1 -GitHubToken 'test_token'
 
 
     #         Write-Host $output
