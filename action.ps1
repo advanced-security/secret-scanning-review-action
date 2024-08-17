@@ -295,8 +295,8 @@ if ($alertsInitiatedFromPr.Count -gt 0) {
     $markdownSummary += $markdownSummaryTableRows
 }
 
-# PR Comment Summary
-if (!$DisablePRComment) {
+# PR Comment Summary only if not disabled and alerts were found
+if (!$DisablePRComment -and $alertsInitiatedFromPr.Count -gt 0) {
     <# API: GET PR COMMENTS
     - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment
     - format: /repos/{owner}/{repo}/issues/{pull_number}/comments
