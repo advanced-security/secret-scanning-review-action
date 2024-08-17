@@ -328,7 +328,7 @@ if (!$DisablePRComment -and $alertsInitiatedFromPr.Count -gt 0) {
     }
 }
 else {
-    Write-ActionDebug "DisablePRComment is set to $DisablePRComment and alertsInitiatedFromPr is $($alertsInitiatedFromPr.Count) , skipping PR comment update"
+    Write-ActionDebug "Skipping PR comment update - DisablePRComment is set to $DisablePRComment and alertsInitiatedFromPr is $($alertsInitiatedFromPr.Count)"
 }
 
 #Output Step Summary - To the GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
