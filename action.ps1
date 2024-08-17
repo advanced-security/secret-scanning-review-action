@@ -145,7 +145,7 @@ try {
 catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
-Write-ActionInfo "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commits"
+Write-ActionInfo "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commit$($pr.commits -eq 1 ? '' : 's')"
 
 <# API: GET PR Commits
     - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request
@@ -184,7 +184,7 @@ try {
         $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $alertsResponse.nextLink -ExtendedResult $true
         $alerts += $alertsResponse.result
     }
-    Write-ActionInfo "Found $($alerts.Count) secret scanning alerts for '$OrganizationName/$RepositoryName'"
+    Write-ActionInfo "Found $($alerts.Count) secret scanning alert$($alerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
 }
 catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
