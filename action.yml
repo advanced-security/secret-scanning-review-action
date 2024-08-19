@@ -17,11 +17,22 @@ inputs:
     description: 'A boolean to disable the PR comment feature.'
     required: false
     default: 'false'
+  runtime:
+    description: 'The runtime to use for the action (`powershell` or `python`).'
+    required: false
+    default: 'powershell'
 runs:
     using: composite
     steps:
-      - run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }}
+      - name: Run Powershell Script
+        if: ${{ inputs.runtime == 'powershell' }}
+        run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }}
         shell: pwsh
+      - name: Run Python Script
+        if: ${{ inputs.runtime == 'python' }}
+        run: |
+          pip install -r ${{ github.action_path }}/requirements.txt
+          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }}
 branding:
   icon: "lock"
   color: "gray-dark"
