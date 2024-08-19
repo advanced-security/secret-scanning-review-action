@@ -5,6 +5,7 @@ import logging
 import requests
 import argparse
 import re
+from datetime import datetime, timezone
 
 def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-commits-on-a-pull-request
@@ -141,9 +142,58 @@ def get_pull_request(github_token, repo_owner, repo_name, pull_request_number):
     except Exception as err:
         print(f"An error occurred: {err}")
 
+def update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary):
+    # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment    
+    comments = []
+    per_page = 100
+    page = 1
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json'
+    }
+    try:
+        while True:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            page_comments = response.json()
+            comments.extend(page_comments)
+            
+            # Check if there are more pages
+            if len(page_comments) < 100:
+                break
+            page += 1
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error reading comment from '{repo_owner}/{repo_name}' Pull Request#{pull_request_number}. Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:{e.response.status_code} Message:{e})")
+    pr_comment_watermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
+    existing_comment = next((comment for comment in comments if pr_comment_watermark in comment['body']), None)
+    comment = {
+        'body': f"{pr_comment_watermark}\n{markdown_summary}\n<!-- {datetime.now(timezone.utc).isoformat()} -->"
+    }
+    try:
+        if existing_comment:
+            comment_response = requests.patch(existing_comment['url'], headers=headers, json=comment)
+        else:
+            comment_response = requests.post(url, headers=headers, json=comment)
+        comment_response.raise_for_status()
+        print(f"Updated PR Comment: {comment_response.json()['html_url']}")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Error adding comment to '{repo_owner}/{repo_name}' Pull Request#{pull_request_number}. Ensure GITHUB_TOKEN has `pull_requests:write` repo permissions. (StatusCode:{e.response.status_code} Message:{e})")
+
+# Convert string input parameters to boolean
+# Reference: https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse/43357954#43357954
+def str2bool(value):
+        if isinstance(value, bool):
+            return value
+        if value.lower() in ('true', '1'):
+            return True
+        elif value.lower() in ('false', '0'):
+            return False
+        else:
+            raise ValueError(f"Invalid boolean value: {value}")
+
 def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment):
     # Check if GITHUB_TOKEN is set
-    github_token = os.getenv('GitHubToken', None)
     env_github_token = os.getenv('GITHUB_TOKEN', None)
 
     if github_token:
@@ -217,7 +267,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     num_secrets_alerts_detected = 0
     num_secrets_alert_locations_detected = 0
     should_fail_action = False
-    markdown_summary_table_rows = None
+    markdown_summary_table_rows = ''
 
     for alert in alerts_in_pr:
         num_secrets_alerts_detected += 1
@@ -234,26 +284,82 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             if fail_on_alert and not should_bypass:
                 print(f"::error file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
                 should_fail_action = True
-                passFail = "[🔴](# 'Error')"
+                pass_fail = "[🔴](# 'Error')"
             else:
                 print(f"::warning file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
-                passFail = "[🟡](# 'Warning')"
+                pass_fail = "[🟡](# 'Warning')"
 
-                # LEFT OFF ON action.ps1 LINE 275
-                                       
+            markdown_summary_table_rows += (
+                f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
+                f"{alert['state']} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
+                f"{alert['push_protection_bypassed']} | "
+                f"[{location['details']['commit_sha'][:7]}]({pull_request['html_url']}/commits/{location['details']['commit_sha']}) |\n"
+            )
 
+    # One line summary of alerts found
+    summary = (
+        f"{'🚨' if num_secrets_alerts_detected > 0 else '👍'} Found [{num_secrets_alerts_detected}] secret scanning alert"
+        f"{'' if num_secrets_alerts_detected == 1 else 's'} across [{num_secrets_alert_locations_detected}] location"
+        f"{'' if num_secrets_alert_locations_detected == 1 else 's'} that originated from a PR#{pull_request_number} commit"
+    )
 
+    markdown_summary = (
+        f"# :unlock: [PR#{pull_request_number}]({pull_request['html_url']}) SECRET SCANNING REVIEW SUMMARY :unlock: \n {summary} \n"
+    )
+
+    # Build a markdown table of any alerts
+    if len(alerts_in_pr) > 0:
+        markdown_summary += (
+            "| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Commit #️⃣ |\n"
+            "| --- | --- | --- | --- | --- | --- | --- |\n"
+        )
+        markdown_summary += markdown_summary_table_rows
+    
+    # PR Comment Summary only if not disabled and alerts were found
+    if not disable_pr_comment and len(alerts_in_pr) > 0:
+        update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary)
+    else:
+        print(f"Skipping PR comment update - DisablePRComment is set to {disable_pr_comment} and alertsInitiatedFromPr is {len(alerts_in_pr)}")
+    
+    # Output Step Summary - To the GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
+    github_step_summary = os.environ.get('GITHUB_STEP_SUMMARY')
+    
+    if github_step_summary:
+        with open(github_step_summary, 'w') as summary_file:
+            summary_file.write(markdown_summary)
+        
+        # Log the path of the GITHUB_STEP_SUMMARY file
+        print(f"Markdown Summary from env var GITHUB_STEP_SUMMARY: '{github_step_summary}'")
+        
+        # Read and log the content of the GITHUB_STEP_SUMMARY file
+        with open(github_step_summary, 'r') as summary_file:
+            content = summary_file.read()
+            print(content)
+    else:
+        print("GITHUB_STEP_SUMMARY environment variable is not set.")
+
+    # Output Message Summary and set exit code
+    # - any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
+    # - otherwise, return 0
+    if len(alerts_in_pr) > 0 and should_fail_action:
+        # Log an error message and set the action as failed
+        print(f"::error::{summary}")
+        exit(1)
+    else:
+        # Log an informational message
+        print(f"::notice::{summary}")
+        exit(0)
 
 
 if __name__ == "__main__":
     
     logging.basicConfig(level=logging.DEBUG)
 
-    parser = argparse.ArgumentParser(description="Process some parameters.")
+    parser = argparse.ArgumentParser(description="Process input parameters.")
     parser.add_argument("--GitHubToken", type=str, required=True, help="GitHub Token")
-    parser.add_argument("--FailOnAlert", type=bool, required=True, help="Fail on alert")
-    parser.add_argument("--FailOnAlertExcludeClosed", type=bool, required=True, help="Fail on alert exclude closed")
-    parser.add_argument("--DisablePRComment", type=bool, required=True, help="Disable PR comment")
+    parser.add_argument("--FailOnAlert", type=str2bool, required=True, help="Fail on alert")
+    parser.add_argument("--FailOnAlertExcludeClosed", type=str2bool, required=True, help="Fail on alert exclude closed")
+    parser.add_argument("--DisablePRComment", type=str2bool, required=True, help="Disable PR comment")
 
     args = parser.parse_args()
     main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment)

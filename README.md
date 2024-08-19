@@ -51,7 +51,7 @@ This action is used to enhance the Advanced Security Secret Scanning experience 
 ### `token`
 **REQUIRED** A GitHub Access Token
    * Classic Tokens
-      *  repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+      * `repo` scope. For public repositories, you may instead use the `public_repo` + `security_events` scopes.
    * Fine-grained personal access token permissions
       * Read-Only - [Secret Scanning Alerts](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-secret-scanning-alerts)
       * Write - [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests).
@@ -69,6 +69,9 @@ NOTE:
 
 ### `disable-pr-comment`
 **OPTIONAL** If provided, will not put a comment on the Pull Request with a summary of detected secrets. Default `"false"`.
+
+### `runtime`
+**OPTIONAL** If provided, will desingate the runtime that's used to run the action. Options are 'powershell' or 'python'. Default `"powershell"`.
 
 ## Outputs
 N/A
@@ -93,6 +96,7 @@ jobs:
           token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
           fail-on-alert: true
           fail-on-alert-exclude-closed: true
+          runtime: 'powershell' # or 'python'
 ```
 
 # Architecture
@@ -169,9 +173,12 @@ sequenceDiagram
 
 # FAQ
 
-## Why Powershell
+## Why Powershell?
 A few reasons
 1. I was challanged by a coworker during a Python v PowerShell discussion
-2. To demonstrate GitHub Actions flexibility ([pwsh is installed by default on the runners!](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software))
-3. Find current pitfalls and work with platform team to improve!
-4. Powershell is cross-platform automation platform with the power of .NET!
+2. To demonstrate GitHub Actions flexibility ([pwsh is installed by default on GitHub-hosted runners!](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software))
+3. Find current pitfalls and work with the platform team to improve!
+4. Powershell is s cross-platform automation platform with the power of .NET!
+
+## Why are there two runtime options and what's the difference?
+The two runtimes are designed to be functionally equivalent.  The primary difference is the underlying language and the dependencies that are required to be installed on the runner.  The `powershell` runtime is the default and is the most tested.  The `python` runtime is a newer addition for those who may not have powershell installed on their self-hosted runners.

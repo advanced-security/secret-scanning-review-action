@@ -336,3 +336,6 @@ _TMP/
 
 ## GitHub Actions Simulation
 _temp/
+
+# Environment files
+.env

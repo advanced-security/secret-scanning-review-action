@@ -33,6 +33,7 @@ runs:
         run: |
           pip install -r ${{ github.action_path }}/requirements.txt
           python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }}
+        shell: bash
 branding:
   icon: "lock"
   color: "gray-dark"
