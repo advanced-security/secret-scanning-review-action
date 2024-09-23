@@ -44,7 +44,7 @@ runs:
         if: ${{ inputs.runtime == 'python' }}
         run: |
           pip install -r ${{ github.action_path }}/requirements.txt
-          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyUrlHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }}
+          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }}
         shell: bash
 branding:
   icon: "lock"

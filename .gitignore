@@ -339,3 +339,6 @@ _temp/
 
 # Environment files
 .env
+
+# Release Command
+release-command.sh
