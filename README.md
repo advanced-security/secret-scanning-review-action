@@ -5,12 +5,9 @@
 ![GitHub Stars](https://img.shields.io/github/stars/advanced-security/secret-scanning-review-action)
 ![GitHub forks](https://img.shields.io/github/forks/advanced-security/secret-scanning-review-action)
 
-
 [![Latest](https://img.shields.io/github/release/advanced-security/secret-scanning-review-action.svg)](https://github.com/advanced-security/secret-scanning-review-action/releases) 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/advanced-security/secret-scanning-review-action/badge)](https://scorecard.dev/viewer/?uri=github.com/advanced-security/secret-scanning-review-action)
 ![GitHub License](https://img.shields.io/github/license/advanced-security/secret-scanning-review-action)
-
-
 
 # secret-scanning-review-action
 Action to provide feedback annotations to the developer when a Secret Scanning alert is initially detected in a PR commit.
@@ -58,20 +55,29 @@ This action is used to enhance the Advanced Security Secret Scanning experience 
         * (`disable-pr-comment: true`) Read-Only - [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests). Not required for public repositories.
 
 NOTE:
-   * Unfortunately we cannot currently utilize the built in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) due to ommitted permissions on the `secret-scanning` api.  Therefore you must generate a token (PAT or GitHub App) with these permissions, add the token as a secret in your repository, and assign the secret to the workflow parameter. See Also: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
+   * Unfortunately we cannot currently utilize the built in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) due to ommitted permissions on the `secret-scanning` API.  Therefore you must generate a token (PAT or GitHub App) with these permissions, add the token as a secret in your repository, and assign the secret to the workflow parameter. See Also: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
    * It is worth noting this token will have `sensitive` data access to return a list of plain text secrets that have been detected in your organization/repository.  At this point, a detected secret also implies anyone with read repository access would provide the same level of access to the leaked secret and therefore should be considered compromised.
 
 ### `fail-on-alert`
-**OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `"false"`.
+**OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `'false'`.
 
 ### `fail-on-alert-exclude-closed`
-**OPTIONAL** If provided, will handle failure exit code / annotations as warnings if the alert is found and the alert is marked as closed (state: 'resolved'). Default `"false"`.
+**OPTIONAL** If provided, will handle failure exit code / annotations as warnings if the alert is found and the alert is marked as closed (state: 'resolved'). Default `'false'`.
 
 ### `disable-pr-comment`
-**OPTIONAL** If provided, will not put a comment on the Pull Request with a summary of detected secrets. Default `"false"`.
+**OPTIONAL** If provided, will not put a comment on the Pull Request with a summary of detected secrets. Default `'false'`.
 
 ### `runtime`
-**OPTIONAL** If provided, will desingate the runtime that's used to run the action. Options are 'powershell' or 'python'. Default `"powershell"`.
+**OPTIONAL** If provided, will desingate the runtime that's used to run the action. Options are `'powershell'` or `'python'`. Default `'powershell'`.
+
+### `python-http-proxy-url`
+**OPTIONAL** If provided, will set the http proxy for the python runtime. Default `""`. Example: `"http://proxy.example.com:1234"`
+
+### `python-https-proxy-url`
+**OPTIONAL** If provided, will set the https proxy for the python runtime. Default `""`. Example: `"http://proxy.example.com:5678"`
+
+### `python-verify-ssl`
+**OPTIONAL** If provided, will set the ssl verification option for the python runtime. Default `'true'`.
 
 ## Outputs
 N/A

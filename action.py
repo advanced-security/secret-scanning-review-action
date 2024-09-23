@@ -7,7 +7,7 @@ import argparse
 import re
 from datetime import datetime, timezone
 
-def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number):
+def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-commits-on-a-pull-request
     all_commits = []
     per_page = 100
@@ -19,7 +19,8 @@ def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number)
                 "Authorization": f"Bearer {github_token}",
                 "Accept": "application/vnd.github+json",
             }
-            response = requests.get(url, headers=headers)
+            proxies = { "http": http_proxy_url, "https": https_proxy_url }
+            response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
             response.raise_for_status()
             commits = response.json()
             all_commits.extend(commits)
@@ -41,7 +42,7 @@ def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number)
             break
     return all_commits
 
-def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name):
+def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, fail_on_alert_exclude_closed, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/secret-scanning?apiVersion=2022-11-28#list-secret-scanning-alerts-for-a-repository
     all_alerts = []
     per_page = 100
@@ -49,11 +50,14 @@ def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name):
     while True:
         try:
             url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/secret-scanning/alerts?per_page={per_page}&page={page}"
+            if fail_on_alert_exclude_closed:
+                url += "&state=open"
             headers = {
                 "Authorization": f"Bearer {github_token}",
                 "Accept": "application/vnd.github+json",
             }
-            response = requests.get(url, headers=headers)
+            proxies = { "http": http_proxy_url, "https": https_proxy_url }
+            response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
             response.raise_for_status()
             alerts = response.json()
             all_alerts.extend(alerts)
@@ -81,7 +85,7 @@ def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name):
             break
     return all_alerts
 
-def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number):
+def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/secret-scanning?apiVersion=2022-11-28#list-locations-for-a-secret-scanning-alert
     all_locations = []
     per_page = 100
@@ -93,7 +97,8 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number):
                 "Authorization": f"Bearer {github_token}",
                 "Accept": "application/vnd.github+json",
             }
-            response = requests.get(url, headers=headers)
+            proxies = { "http": http_proxy_url, "https": https_proxy_url }
+            response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
             response.raise_for_status()
             locations = response.json()
             all_locations.extend(locations)        
@@ -121,7 +126,7 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number):
             break
     return all_locations
 
-def get_pull_request(github_token, repo_owner, repo_name, pull_request_number):
+def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#get-a-pull-request
     try:
         url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}"
@@ -129,7 +134,8 @@ def get_pull_request(github_token, repo_owner, repo_name, pull_request_number):
             "Authorization": f"Bearer {github_token}",
             "Accept": "application/vnd.github+json",
         }
-        response = requests.get(url, headers=headers)
+        proxies = { "http": http_proxy_url, "https": https_proxy_url }
+        response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.HTTPError as err:
@@ -142,7 +148,7 @@ def get_pull_request(github_token, repo_owner, repo_name, pull_request_number):
     except Exception as err:
         print(f"An error occurred: {err}")
 
-def update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary):
+def update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment    
     comments = []
     per_page = 100
@@ -152,9 +158,10 @@ def update_pull_request_comment(github_token, repo_owner, repo_name, pull_reques
         'Authorization': f'Bearer {github_token}',
         'Accept': 'application/vnd.github+json'
     }
+    proxies = { "http": http_proxy_url, "https": https_proxy_url }
     try:
         while True:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
             response.raise_for_status()
             page_comments = response.json()
             comments.extend(page_comments)
@@ -172,9 +179,9 @@ def update_pull_request_comment(github_token, repo_owner, repo_name, pull_reques
     }
     try:
         if existing_comment:
-            comment_response = requests.patch(existing_comment['url'], headers=headers, json=comment)
+            comment_response = requests.patch(existing_comment['url'], headers=headers, json=comment, proxies=proxies, verify=verify_ssl)
         else:
-            comment_response = requests.post(url, headers=headers, json=comment)
+            comment_response = requests.post(url, headers=headers, json=comment, proxies=proxies, verify=verify_ssl)
         comment_response.raise_for_status()
         print(f"Updated PR Comment: {comment_response.json()['html_url']}")
     except requests.exceptions.RequestException as e:
@@ -192,7 +199,7 @@ def str2bool(value):
         else:
             raise ValueError(f"Invalid boolean value: {value}")
 
-def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment):
+def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment, http_proxy_url, https_proxy_url, verify_ssl):
     # Check if GITHUB_TOKEN is set
     env_github_token = os.getenv('GITHUB_TOKEN', None)
 
@@ -230,11 +237,11 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
 
     # Get the pull request information:
     logging.debug("Getting the pull request information.")
-    pull_request = get_pull_request(github_token, repo_owner, repo_name, pull_request_number)
+    pull_request = get_pull_request(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
 
     # Get the commits for the PR:
     logging.debug("Getting the commits for the PR.")
-    commits = get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number)
+    commits = get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
     logging.debug(f"Found {len(commits)} commits.")
 
     # For each PR commit add the commit sha to the list
@@ -244,7 +251,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
 
     # Get the secret scanning alerts for the repo:
     logging.debug("Getting the secret scanning alerts for the repo.")
-    alerts = get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name)
+    alerts = get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, fail_on_alert_exclude_closed, http_proxy_url, https_proxy_url, verify_ssl)
     logging.debug(f"Found {len(alerts)} alerts.")
 
     # For each alert check if the alert's commit is in the list of PR commits
@@ -252,7 +259,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     alerts_in_pr = []
     alerts_reviewed = 0
     for alert in alerts:
-        alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'])
+        alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
         for location in alert_locations:
             if location['type'] == 'commit':
                 if location['details']['commit_sha'] in commit_shas:
@@ -272,7 +279,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     for alert in alerts_in_pr:
         num_secrets_alerts_detected += 1
         # Need to get locations for the alert
-        alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'])
+        alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
         for location in alert_locations:
             num_secrets_alert_locations_detected += 1
             message = (
@@ -317,7 +324,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     
     # PR Comment Summary only if not disabled and alerts were found
     if not disable_pr_comment and len(alerts_in_pr) > 0:
-        update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary)
+        update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary, http_proxy_url, https_proxy_url, verify_ssl)
     else:
         print(f"Skipping PR comment update - DisablePRComment is set to {disable_pr_comment} and alertsInitiatedFromPr is {len(alerts_in_pr)}")
     
@@ -360,6 +367,9 @@ if __name__ == "__main__":
     parser.add_argument("--FailOnAlert", type=str2bool, required=True, help="Fail on alert")
     parser.add_argument("--FailOnAlertExcludeClosed", type=str2bool, required=True, help="Fail on alert exclude closed")
     parser.add_argument("--DisablePRComment", type=str2bool, required=True, help="Disable PR comment")
+    parser.add_argument("--ProxyURLHTTP", type=str, required=False, help="HTTP Proxy URL")
+    parser.add_argument("--ProxyURLHTTPS", type=str, required=False, help="HTTPS Proxy URL")
+    parser.add_argument("--VerifySSL", type=str2bool, required=False, help="Verify SSL")
 
     args = parser.parse_args()
-    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment)
+    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTPS, args.ProxyURLHTTP, args.VerifySSL)

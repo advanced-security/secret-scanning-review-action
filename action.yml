@@ -21,6 +21,18 @@ inputs:
     description: 'The runtime to use for the action (`powershell` or `python`).'
     required: false
     default: 'powershell'
+  python-http-proxy-url:
+    description: 'The URL of the http proxy to use for GitHub API requests (python runtime only).'
+    required: false
+    default: '""'
+  python-https-proxy-url:
+    description: 'The URL of the https proxy to use for GitHub API requests (python runtime only).'
+    required: false
+    default: '""'
+  python-verify-ssl:
+    description: 'A boolean to enable or disable SSL verification for GitHub API requests (python runtime only).'
+    required: false
+    default: 'true'
 runs:
     using: composite
     steps:
@@ -32,7 +44,7 @@ runs:
         if: ${{ inputs.runtime == 'python' }}
         run: |
           pip install -r ${{ github.action_path }}/requirements.txt
-          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }}
+          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyUrlHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }}
         shell: bash
 branding:
   icon: "lock"
