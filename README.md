@@ -81,6 +81,9 @@ NOTE:
 > [!WARNING]
 > Disabling SSL verification is NOT recommended for production environments. This option is provided for testing purposes only.
 
+### `python-skip-closed-alerts`
+**OPTIONAL** If provided, will only process open alerts. Default `'false'`.
+
 ## Outputs
 N/A
 
