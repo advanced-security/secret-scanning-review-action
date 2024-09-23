@@ -78,6 +78,8 @@ NOTE:
 
 ### `python-verify-ssl`
 **OPTIONAL** If provided, will set the ssl verification option for the python runtime. Default `'true'`.
+> [!WARNING]
+> Disabling SSL verification is NOT recommended for production environments. This option is provided for testing purposes only.
 
 ## Outputs
 N/A

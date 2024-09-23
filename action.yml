@@ -30,7 +30,7 @@ inputs:
     required: false
     default: '""'
   python-verify-ssl:
-    description: 'A boolean to enable or disable SSL verification for GitHub API requests (python runtime only).'
+    description: 'A boolean to enable or disable SSL verification for GitHub API requests (python runtime only). NOTE: This is NOT recommended and may introduce additional security risks.'
     required: false
     default: 'true'
 runs:
