@@ -42,7 +42,7 @@ def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number,
             break
     return all_commits
 
-def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, fail_on_alert_exclude_closed, http_proxy_url, https_proxy_url, verify_ssl):
+def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/secret-scanning?apiVersion=2022-11-28#list-secret-scanning-alerts-for-a-repository
     all_alerts = []
     per_page = 100
@@ -50,7 +50,7 @@ def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, fai
     while True:
         try:
             url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/secret-scanning/alerts?per_page={per_page}&page={page}"
-            if fail_on_alert_exclude_closed:
+            if skip_closed_alerts:
                 url += "&state=open"
             headers = {
                 "Authorization": f"Bearer {github_token}",
@@ -199,7 +199,7 @@ def str2bool(value):
         else:
             raise ValueError(f"Invalid boolean value: {value}")
 
-def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment, http_proxy_url, https_proxy_url, verify_ssl):
+def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts):
     # Check if GITHUB_TOKEN is set
     env_github_token = os.getenv('GITHUB_TOKEN', None)
 
@@ -251,7 +251,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
 
     # Get the secret scanning alerts for the repo:
     logging.debug("Getting the secret scanning alerts for the repo.")
-    alerts = get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, fail_on_alert_exclude_closed, http_proxy_url, https_proxy_url, verify_ssl)
+    alerts = get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts)
     logging.debug(f"Found {len(alerts)} alerts.")
 
     # For each alert check if the alert's commit is in the list of PR commits
@@ -370,6 +370,7 @@ if __name__ == "__main__":
     parser.add_argument("--ProxyURLHTTP", type=str, required=False, help="HTTP Proxy URL")
     parser.add_argument("--ProxyURLHTTPS", type=str, required=False, help="HTTPS Proxy URL")
     parser.add_argument("--VerifySSL", type=str2bool, required=False, help="Verify SSL")
+    parser.add_argument("--SkipClosedAlerts", type=str2bool, required=False, help="Skip closed alerts")
 
     args = parser.parse_args()
-    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTPS, args.ProxyURLHTTP, args.VerifySSL)
+    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTPS, args.ProxyURLHTTP, args.VerifySSL, args.SkipClosedAlerts)
