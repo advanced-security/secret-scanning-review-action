@@ -36,10 +36,10 @@ def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number,
         except requests.exceptions.HTTPError as err:
             if response.status_code != 200:
                 print("Ensure that the access token has at least read access to pull requests.")
-                break
+                exit(1)
         except Exception as err:
             print(f"An error occurred: {err}")
-            break
+            exit(1)
     return all_commits
 
 def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts):
@@ -73,16 +73,16 @@ def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, htt
         except requests.exceptions.HTTPError as err:
             if response.status_code == 404:
                 print("Ensure that secret scanning is enabled for the repository and that the access token has at least read access to secret scanning alerts.")
-                break
+                exit(1)
             elif response.status_code == 503:
-                print("Service unavailable, please try again.")
-                break
-            else:
+                print("Secret scanning service unavailable, please re-run the job to try again.")
+                exit(1)
+            elif response.status_code != 200:
                 print(f"HTTP error occurred: {err}")
-                break
+                exit(1)
         except Exception as err:
             print(f"An error occurred: {err}")
-            break
+            exit(1)
     return all_alerts
 
 def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, http_proxy_url, https_proxy_url, verify_ssl):
@@ -114,16 +114,16 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, h
         except requests.exceptions.HTTPError as err:
             if response.status_code == 404:
                 print("Ensure that secret scanning is enabled for the repository and that the access token has at least read access to secret scanning alerts.")
-                break
+                exit(1)
             elif response.status_code == 503:
                 print("Service unavailable, please try again.")
-                break
-            else:
+                exit(1)
+            elif response.status_code != 200:
                 print(f"HTTP error occurred: {err}")
-                break
+                exit(1)
         except Exception as err:
             print(f"An error occurred: {err}")
-            break
+            exit(1)
     return all_locations
 
 def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
@@ -141,12 +141,16 @@ def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, h
     except requests.exceptions.HTTPError as err:
         if response.status_code == 404:
             print("Ensure that the access token has at least read access to pull requests.")
+            exit(1)
         elif response.status_code == 503:
-            print("Service unavailable, please try again.")
-        else:
+            print("Pull request service unavailable, please re-run the job to try again.")
+            exit(1)
+        elif response.status_code != 200:
             print(f"HTTP error occurred: {err}")
+            exit(1)
     except Exception as err:
         print(f"An error occurred: {err}")
+        exit(1)
 
 def update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment    
