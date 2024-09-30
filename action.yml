@@ -17,11 +17,39 @@ inputs:
     description: 'A boolean to disable the PR comment feature.'
     required: false
     default: 'false'
+  runtime:
+    description: 'The runtime to use for the action (`powershell` or `python`).'
+    required: false
+    default: 'powershell'
+  python-http-proxy-url:
+    description: 'The URL of the http proxy to use for GitHub API requests (python runtime only).'
+    required: false
+    default: '""'
+  python-https-proxy-url:
+    description: 'The URL of the https proxy to use for GitHub API requests (python runtime only).'
+    required: false
+    default: '""'
+  python-verify-ssl:
+    description: 'A boolean to enable or disable SSL verification for GitHub API requests (python runtime only). NOTE: This is NOT recommended and may introduce additional security risks.'
+    required: false
+    default: 'true'
+  python-skip-closed-alerts:
+    description: 'A boolean to enable or disable skipping closed alerts from evaluation (python runtime only).'
+    required: false
+    default: 'false'
 runs:
     using: composite
     steps:
-      - run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }}
+      - name: Run Powershell Script
+        if: ${{ inputs.runtime == 'powershell' }}
+        run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }}
         shell: pwsh
+      - name: Run Python Script
+        if: ${{ inputs.runtime == 'python' }}
+        run: |
+          pip install -r ${{ github.action_path }}/requirements.txt
+          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }} --SkipClosedAlerts ${{ inputs.python-skip-closed-alerts }}
+        shell: bash
 branding:
   icon: "lock"
   color: "gray-dark"

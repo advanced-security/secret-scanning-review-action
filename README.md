@@ -5,12 +5,9 @@
 ![GitHub Stars](https://img.shields.io/github/stars/advanced-security/secret-scanning-review-action)
 ![GitHub forks](https://img.shields.io/github/forks/advanced-security/secret-scanning-review-action)
 
-
 [![Latest](https://img.shields.io/github/release/advanced-security/secret-scanning-review-action.svg)](https://github.com/advanced-security/secret-scanning-review-action/releases) 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/advanced-security/secret-scanning-review-action/badge)](https://scorecard.dev/viewer/?uri=github.com/advanced-security/secret-scanning-review-action)
 ![GitHub License](https://img.shields.io/github/license/advanced-security/secret-scanning-review-action)
-
-
 
 # secret-scanning-review-action
 Action to provide feedback annotations to the developer when a Secret Scanning alert is initially detected in a PR commit.
@@ -51,24 +48,41 @@ This action is used to enhance the Advanced Security Secret Scanning experience 
 ### `token`
 **REQUIRED** A GitHub Access Token
    * Classic Tokens
-      *  repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+      * `repo` scope. For public repositories, you may instead use the `public_repo` + `security_events` scopes.
    * Fine-grained personal access token permissions
       * Read-Only - [Secret Scanning Alerts](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-secret-scanning-alerts)
       * Write - [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests).
         * (`disable-pr-comment: true`) Read-Only - [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests). Not required for public repositories.
 
 NOTE:
-   * Unfortunately we cannot currently utilize the built in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) due to ommitted permissions on the `secret-scanning` api.  Therefore you must generate a token (PAT or GitHub App) with these permissions, add the token as a secret in your repository, and assign the secret to the workflow parameter. See Also: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
+   * Unfortunately we cannot currently utilize the built in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) due to ommitted permissions on the `secret-scanning` API.  Therefore you must generate a token (PAT or GitHub App) with these permissions, add the token as a secret in your repository, and assign the secret to the workflow parameter. See Also: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
    * It is worth noting this token will have `sensitive` data access to return a list of plain text secrets that have been detected in your organization/repository.  At this point, a detected secret also implies anyone with read repository access would provide the same level of access to the leaked secret and therefore should be considered compromised.
 
 ### `fail-on-alert`
-**OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `"false"`.
+**OPTIONAL** If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found. Default `'false'`.
 
 ### `fail-on-alert-exclude-closed`
-**OPTIONAL** If provided, will handle failure exit code / annotations as warnings if the alert is found and the alert is marked as closed (state: 'resolved'). Default `"false"`.
+**OPTIONAL** If provided, will handle failure exit code / annotations as warnings if the alert is found and the alert is marked as closed (state: 'resolved'). Default `'false'`.
 
 ### `disable-pr-comment`
-**OPTIONAL** If provided, will not put a comment on the Pull Request with a summary of detected secrets. Default `"false"`.
+**OPTIONAL** If provided, will not put a comment on the Pull Request with a summary of detected secrets. Default `'false'`.
+
+### `runtime`
+**OPTIONAL** If provided, will desingate the runtime that's used to run the action. Options are `'powershell'` or `'python'`. Default `'powershell'`.
+
+### `python-http-proxy-url`
+**OPTIONAL** If provided, will set the http proxy for the python runtime. Default `""`. Example: `"http://proxy.example.com:1234"`
+
+### `python-https-proxy-url`
+**OPTIONAL** If provided, will set the https proxy for the python runtime. Default `""`. Example: `"http://proxy.example.com:5678"`
+
+### `python-verify-ssl`
+**OPTIONAL** If provided, will set the ssl verification option for the python runtime. Default `'true'`.
+> [!WARNING]
+> Disabling SSL verification is NOT recommended for production environments. This option is provided for testing purposes only.
+
+### `python-skip-closed-alerts`
+**OPTIONAL** If provided, will only process open alerts. Default `'false'`.
 
 ## Outputs
 N/A
@@ -93,6 +107,7 @@ jobs:
           token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
           fail-on-alert: true
           fail-on-alert-exclude-closed: true
+          runtime: 'powershell' # or 'python'
 ```
 
 # Architecture
@@ -169,9 +184,12 @@ sequenceDiagram
 
 # FAQ
 
-## Why Powershell
+## Why Powershell?
 A few reasons
 1. I was challanged by a coworker during a Python v PowerShell discussion
-2. To demonstrate GitHub Actions flexibility ([pwsh is installed by default on the runners!](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software))
-3. Find current pitfalls and work with platform team to improve!
-4. Powershell is cross-platform automation platform with the power of .NET!
+2. To demonstrate GitHub Actions flexibility ([pwsh is installed by default on GitHub-hosted runners!](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software))
+3. Find current pitfalls and work with the platform team to improve!
+4. Powershell is s cross-platform automation platform with the power of .NET!
+
+## Why are there two runtime options and what's the difference?
+The two runtimes are designed to be functionally equivalent.  The primary difference is the underlying language and the dependencies that are required to be installed on the runner.  The `powershell` runtime is the default and is the most tested.  The `python` runtime is a newer addition for those who may not have powershell installed on their self-hosted runners.
