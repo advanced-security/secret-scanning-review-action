@@ -203,6 +203,67 @@ def str2bool(value):
         else:
             raise ValueError(f"Invalid boolean value: {value}")
 
+def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
+    # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments
+    comments = []
+    per_page = 100
+    page = 1
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json'
+    }
+    proxies = { "http": http_proxy_url, "https": https_proxy_url }
+    try:
+        while True:
+            response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
+            response.raise_for_status()
+            page_comments = response.json()
+            comments.extend(page_comments)
+            
+            # Check if there are more pages
+            if len(page_comments) < 100:
+                break
+            page += 1
+        return comments
+    except requests.exceptions.HTTPError as err:
+        if response.status_code == 404:
+            print("Ensure that the access token has at least read access to pull requests.")
+            exit(1)
+        elif response.status_code == 410:
+            print("Pull request has been deleted.")
+            exit(1)
+        elif response.status_code != 200:
+            print(f"HTTP error occurred: {err}")
+            exit(1)
+    except Exception as err:
+        print(f"An error occurred: {err}")
+        exit(1)
+
+def get_pull_request_review_comment(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
+    # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}/reviews"
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json'
+    }
+    proxies = { "http": http_proxy_url, "https": https_proxy_url }
+    try:
+        response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
+        response.raise_for_status()
+        comment = response.json()
+        return comment
+    except requests.exceptions.HTTPError as err:
+        if response.status_code == 404:
+            print("Ensure that the access token has at least read access to pull requests.")
+            exit(1)
+        elif response.status_code != 200:
+            print(f"HTTP error occurred: {err}")
+            exit(1)
+    except Exception as err:
+        print(f"An error occurred: {err}")
+        exit(1)
+
 def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts):
     # Check if GITHUB_TOKEN is set
     env_github_token = os.getenv('GITHUB_TOKEN', None)
@@ -267,9 +328,41 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         for location in alert_locations:
             if location['type'] == 'commit':
                 if location['details']['commit_sha'] in commit_shas:
-                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR.")
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a commit in the PR.")
                     alerts_in_pr.append(alert)
                     break
+            elif location['type'] == 'pull_request_title':
+                if location['details']['pull_request_title_url'] == pull_request['url']:
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR title.")
+                    alerts_in_pr.append(alert)
+                    break
+            elif location['type'] == 'pull_request_body':
+                if location['details']['pull_request_body_url'] == pull_request['url']:
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR body.")
+                    alerts_in_pr.append(alert)
+                    break
+            elif location['type'] == 'pull_request_comment':
+                pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
+                comment_id = location['details']['pull_request_comment_url'].split('/')[-1]
+                for comment in pr_comments:
+                    if comment['id'] == comment_id:
+                        logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR comment.")
+                        alerts_in_pr.append(alert)
+                        break
+            elif location['type'] == 'pull_request_review':
+                # remove '/reviews/1234567890' from the end of the pull_request_review_url to compare against the PR URL:
+                shortened_pr_review_url = location['details']['pull_request_review_url'].rstrip('/').rsplit('/', 2)[0]
+                if shortened_pr_review_url == pull_request['url']:
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review.")
+                    alerts_in_pr.append(alert)
+                    break
+            elif location['type'] == 'pull_request_review_comment':
+                pr_review_comment = get_pull_request_review_comment(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
+                if pr_review_comment['pull_request_url'] == pull_request['url']:
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
+                    alerts_in_pr.append(alert)
+                    break
+
         # Increment the counter and log the progress
         alerts_reviewed += 1
         logging.info(f"Reviewed {alerts_reviewed} out of {len(alerts)} alerts.")
