@@ -420,7 +420,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                 commit_sha = location['details']['commit_sha'][:7]
                 location_value = f"Commit [{commit_sha}]({pull_request['html_url']}/commits/{location['details']['commit_sha']})"
             else:
-                location_value = alert_type
+                location_value = alert_location
             
             markdown_summary_table_rows += (
                 f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
