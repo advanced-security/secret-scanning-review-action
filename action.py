@@ -266,16 +266,21 @@ def get_pull_request_review_comment(github_token, pr_review_comment_url, http_pr
 def get_alert_location_type(alert_location):
     if 'type' not in alert_location:
         raise ValueError("Alert location does not have a 'type' field.")
-    type_to_readable = {
-        'commit': 'Commit SHA ' + alert_location['details']['commit_sha'],
-        'pull_request_title': 'Pull request title',
-        'pull_request_body': 'Pull request body',
-        'pull_request_comment': 'Pull request comment',
-        'pull_request_review': 'Pull request review',
-        'pull_request_review_comment': 'Pull request review comment',
-    }
-    readable_type = type_to_readable.get(alert_location['type'], None)    
-    return readable_type
+    type = alert_location['type']
+    if type == 'commit':
+        return 'Commit SHA ' + alert_location['details']['commit_sha']
+    elif type == 'pull_request_title':
+        return 'Pull request title'
+    elif type == 'pull_request_body':
+        return 'Pull request body'
+    elif type == 'pull_request_comment':
+        return 'Pull request comment'
+    elif type == 'pull_request_review':
+        return 'Pull request review'
+    elif type == 'pull_request_review_comment':
+        return 'Pull request review comment'
+    else:
+        return None
 
 def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts):
     # Check if GITHUB_TOKEN is set
