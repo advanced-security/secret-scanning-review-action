@@ -240,10 +240,9 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
         print(f"An error occurred: {err}")
         exit(1)
 
-def get_pull_request_review_comment(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
+def get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request
-    comment = []
-    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}/reviews"
+    url = pr_review_comment_url
     headers = {
         'Authorization': f'Bearer {github_token}',
         'Accept': 'application/vnd.github+json'
@@ -252,8 +251,7 @@ def get_pull_request_review_comment(github_token, repo_owner, repo_name, pull_re
     try:
         response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
         response.raise_for_status()
-        comment.extend(response.json())
-        return comment
+        return response.json()
     except requests.exceptions.HTTPError as err:
         if response.status_code == 404:
             print("Ensure that the access token has at least read access to pull requests.")
@@ -358,7 +356,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                     alerts_in_pr.append(alert)
                     break
             elif location['type'] == 'pull_request_review_comment':
-                pr_review_comment = get_pull_request_review_comment(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
+                pr_review_comment_url = location['details']['pull_request_review_comment_url']
+                pr_review_comment = get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl)
                 if pr_review_comment['pull_request_url'] == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
                     alerts_in_pr.append(alert)
