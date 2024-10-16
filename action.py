@@ -416,11 +416,16 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                     print(f"::warning file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
                 pass_fail = "[🟡](# 'Warning')"
 
+            if alert_type == 'commit':
+                commit_sha = location['details']['commit_sha'][:7]
+                location_value = f"Commit [{commit_sha}]({pull_request['html_url']}/commits/{location['details']['commit_sha']})"
+            else:
+                location_value = alert_type
+            
             markdown_summary_table_rows += (
                 f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
                 f"{alert['state']} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
-                f"{alert['push_protection_bypassed']} | "
-                f"{alert_type if alert_type != 'commit' else 'Commit [' + location['details']['commit_sha'][:7] + ']'}{'' if alert_type != 'commit' else '(' + pull_request['html_url']}/commits/{location['details']['commit_sha'] + ')'} |\n"
+                f"{alert['push_protection_bypassed']} | {location_value} |\n"
             )
 
     # One line summary of alerts found
