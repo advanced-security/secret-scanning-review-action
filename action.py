@@ -242,6 +242,7 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
 
 def get_pull_request_review_comment(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request
+    comment = []
     url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}/reviews"
     headers = {
         'Authorization': f'Bearer {github_token}',
@@ -251,7 +252,7 @@ def get_pull_request_review_comment(github_token, repo_owner, repo_name, pull_re
     try:
         response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
         response.raise_for_status()
-        comment = response.json()
+        comment.extend(response.json())
         return comment
     except requests.exceptions.HTTPError as err:
         if response.status_code == 404:

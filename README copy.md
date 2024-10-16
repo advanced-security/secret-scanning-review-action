@@ -9,52 +9,39 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/advanced-security/secret-scanning-review-action/badge)](https://scorecard.dev/viewer/?uri=github.com/advanced-security/secret-scanning-review-action)
 ![GitHub License](https://img.shields.io/github/license/advanced-security/secret-scanning-review-action)
 
-# Secret Scanning Review Action
+# secret-scanning-review-action
+Action to provide feedback annotations to the developer when a Secret Scanning alert is initially detected in a PR commit.
 
-## Overview
+The action is intended for private repositories that have GitHub Advanced Security licensed.
 
-This Action adds more awareness, and optionally fails a pull request status check, when a secret scanning alert is introduced as part of a pull request. This makes it harder for peer reviewers to miss the alert and makes it easier to enforce that the alert is resolved before the pull request is merged (when combined with [repository rulesets](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
-
-This Action is also helpful in increasing visibility for secrets that are detected with secret scanning, but are not yet [supported with push protection](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-push-protection), or where push protection has been bypassed.
-
-> [!NOTE]
-> When running the Action with the `python` runtime, the Action will also provide a summary of the secrets introduced in the pull request title, description, comments, review, and review comments.
-
-## Prerequisites
-
-For private and internal repositories, you must enable [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security).
-
-## Functionality
-
-### Commit Annontations
-
-The Action adds a `Warning` annotation to any file in the pull request that has introduced a secret (based on the secret scanning alert's initial commit):
+Adds a `Warning` annotation alert to any PR file that has introduced a secret (based on the secret scanning alert initial commit)
 <img width="854" alt="Secret Scanning Review Workflow File Annotation" src="https://user-images.githubusercontent.com/1760475/184815609-58dd4f31-dc08-445a-a692-3b5d4dacbaae.png">
 
-Setting the workflow [FailOnAlert](#failonalert-environment-variable-ssr_fail_on_alert) configuration value to `true` will change those `Warnings` into `Errors`:
+Workflow [FailOnAlert](#failonalert-environment-variable-ssr_fail_on_alert) configuration to turn those `Warnings` into `Errors`!
 <img width="854" alt="Secret Scanning Review Workflow File Annotation" src="https://user-images.githubusercontent.com/1760475/185046387-576fb75b-8a68-4640-94bc-9966f1f3b721.png">
 
-### Status Check Failure
-
-By adding `Error` annotations, new secret alerts will fail the workflow's status check, which provides a "trust, but verify" approach to secret scanning:
+Allowing you additional secret scanning `trust->but->verify` control in your branch protection rules
 <img width="854" alt="Secret Scanning Review Workflow Checks" src="https://user-images.githubusercontent.com/1760475/185046465-1924d71c-3e73-4269-94b9-e5bc283410f4.png">
 
-### Pull Request Job Summary
-
-The Action summarizes all secrets introduced in the pull request in the workflow run summary:
+Summary of all secrets from the PR in the Secret Scanning Review workflow job summary
 <img width="854" alt="Secret Scanning Review Workflow Checks" src="https://user-images.githubusercontent.com/1760475/204209697-7f13551b-5fea-4bc0-bb6e-f4757a82c946.png">
 
-### Pull Request Comments
-
-By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
+Comments on the Pull Request
 <img width="854" alt="Secret Scanning Review Workflow Checks" src="https://github.com/advanced-security/secret-scanning-review-action/assets/1760475/5b743082-33d2-45d1-bef2-c0bb5d796932">
 
-## Security Model Considerations
-* To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
+## Overview
+This action is used to enhance the Advanced Security Secret Scanning experience with:
+* Increased Alert Visibility
+   * Secret Scanning alerts are only sent to [the commiter / Admin role](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-user-access-to-your-organizations-repositories/repository-roles-for-an-organization#access-requirements-for-security-features) dependent on [proper repo watch notification configurations](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/managing-alerts-from-secret-scanning#configuring-notifications-for-secret-scanning-alerts).  Alerts can also be configured to be async via email and may not be viewed in immediately.
+* Additional Alerting Scope
+   * Increase visibility for secrets that are detected with [advanced security](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security) but are not supported via [push protection](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-push-protection)
+* Trust but Verify
+    * Secrets that are initially prevented but have been forced into the Pull Request via [push protection bypass](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/protecting-pushes-with-secret-scanning#allowing-a-blocked-secret-to-be-pushed) can now be audited via [Branch Protection / Required Checks](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/about-protected-branches#require-status-checks-before-merging).
 
-* By default, only users with the repository `Admin` role, users with the organization `Security manager` role, organization owners, _and the committer of the secret_, will be able to dismiss the alert.
+## Security Model Changes
+* To be clear, this will make Secret Scanning Alerts visible to anyone with `Read` access to a repo [following the View code scanning alerts on pull requests](https://docs.github.com/en/enterprise-cloud@latest/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/managing-code-scanning-alerts-for-your-repository#viewing-the-alerts-for-a-repository) via the workflow annotation access model.  This security control level is consistent with the access needed to see any raw secrets already commited to git history!
 
-* If you do wish to give broader access to secret scanning alerts in the repository you might consider a [custom repository role configuration](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-peoples-access-to-your-organization-with-roles/about-custom-repository-roles#security). With a custom role you can choose to grant `View secret scanning results` or `Dismiss or reopen secret scanning results` on top of any of the base repository roles.
+* If you do wish to give broader access to Secret Scanning Alerts in the GitHub Advanced Security platform you might consider a [custom repository role configuration](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-peoples-access-to-your-organization-with-roles/about-custom-repository-roles#security). With a custom role you can choose to grant `View secret scanning results` or `Dismiss or reopen secret scanning results` to any of the base roles with no default alert permissions: `Read,Triage` or the roles that only see alerts on secrets they have commited: `Write,Maintain`.  The `View secret scanning results` permission would allow those roles to then be able to view the deep link to the `Security Alert` column - which is disclosed in the summary.
 
 ## Configuration Options
 
@@ -97,10 +84,12 @@ NOTE:
 ### `python-skip-closed-alerts`
 **OPTIONAL** If provided, will only process open alerts. Default `'false'`.
 
+## Outputs
+N/A
+
 ## Example usage
 
-> [!NOTE]
-> Please keep in mind that you need a [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security) license if you're running this action on private repositories.
+**Please keep in mind that you need a [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security) license if you're running this action on private repositories.**
 
 1. Add a new YAML workflow to your `.github/workflows` folder:
 
@@ -121,7 +110,7 @@ jobs:
           runtime: 'powershell' # or 'python'
 ```
 
-## Architecture
+# Architecture
 * A GitHub [composite action](https://docs.github.com/en/actions/creating-actions/creating-a-composite-action) wrapping a PowerShell script.
 
 ```mermaid
@@ -180,15 +169,11 @@ sequenceDiagram
         * NOTE: [Telemetry is collected via Application Insights](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry)
     * `GitHubActions` ([Gallery](https://www.powershellgallery.com/packages/GitHubActions) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
         * by [@ebekker](https://github.com/ebekker/)
-* Python Dependencies
-    * `requests` module
 
 ## REST APIs
 * Pulls
    * https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#get-a-pull-request
    * https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request
-   * https://docs.github.com/en/rest/pulls/reviews?apiVersion=2022-11-28#list-reviews-for-a-pull-request
-   * https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request
 * Secret Scanning
    * https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository
    * https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert
@@ -196,11 +181,15 @@ sequenceDiagram
   * https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment
   * https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#update-an-issue-comment
   * https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#create-an-issue-comment
-  * https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments
 
-## FAQ
+# FAQ
 
-### Why are there two runtime options and what's the difference?
-The primary difference is the underlying language and the dependencies that are required to be installed on the runner.  The `powershell` runtime is the default and is the most tested.  The `python` runtime is a newer addition for those who may not have powershell installed on their self-hosted runners.
+## Why Powershell?
+A few reasons
+1. I was challanged by a coworker during a Python v PowerShell discussion
+2. To demonstrate GitHub Actions flexibility ([pwsh is installed by default on GitHub-hosted runners!](https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software))
+3. Find current pitfalls and work with the platform team to improve!
+4. Powershell is s cross-platform automation platform with the power of .NET!
 
-The `python` runtime also includes some additional configuration options that are not available in the `powershell` runtime, and looks beyond just the pull request commits for secrets that were introduced in the pull request title, description, comments, review, and review comments.
+## Why are there two runtime options and what's the difference?
+The two runtimes are designed to be functionally equivalent.  The primary difference is the underlying language and the dependencies that are required to be installed on the runner.  The `powershell` runtime is the default and is the most tested.  The `python` runtime is a newer addition for those who may not have powershell installed on their self-hosted runners.
