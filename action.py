@@ -263,6 +263,20 @@ def get_pull_request_review_comment(github_token, pr_review_comment_url, http_pr
         print(f"An error occurred: {err}")
         exit(1)
 
+def get_alert_location_type(alert_location):
+    if 'type' not in alert_location:
+        raise ValueError("Alert location does not have a 'type' field.")
+    type_to_readable = {
+        'commit': 'Commit SHA ' + alert_location['details']['commit_sha'],
+        'pull_request_title': 'Pull request title',
+        'pull_request_body': 'Pull request body',
+        'pull_request_comment': 'Pull request comment',
+        'pull_request_review': 'Pull request review',
+        'pull_request_review_comment': 'Pull request review comment',
+    }
+    readable_type = type_to_readable.get(alert_location['type'], None)    
+    return readable_type
+
 def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts):
     # Check if GITHUB_TOKEN is set
     env_github_token = os.getenv('GITHUB_TOKEN', None)
@@ -379,32 +393,36 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
         for location in alert_locations:
             num_secrets_alert_locations_detected += 1
+            alert_type = location['type']
+            alert_location = get_alert_location_type(location)
             message = (
                 f"A {'Closed as ' + alert['resolution'] if alert['state'] == 'resolved' else 'New'} Secret Detected in "
-                f"Pull Request #{pull_request_number} Commit SHA:{location['details']['commit_sha'][:7]}. "
-                f"'{alert['secret_type_display_name']}' Secret: {alert['html_url']} Commit: {pull_request['html_url']}/commits/{location['details']['commit_sha']}"
+                f"Pull Request #{pull_request_number}. "
+                f"'{alert['secret_type_display_name']}' Secret: {alert['html_url']} Location: {alert_location}"
             )
             should_bypass = (alert['state'] == 'resolved') and fail_on_alert_exclude_closed
             if fail_on_alert and not should_bypass:
-                print(f"::error file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
+                if alert_type == 'commit':
+                    print(f"::error file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
                 should_fail_action = True
                 pass_fail = "[🔴](# 'Error')"
             else:
-                print(f"::warning file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
+                if alert_type == 'commit':
+                    print(f"::warning file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
                 pass_fail = "[🟡](# 'Warning')"
 
             markdown_summary_table_rows += (
                 f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
                 f"{alert['state']} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
                 f"{alert['push_protection_bypassed']} | "
-                f"[{location['details']['commit_sha'][:7]}]({pull_request['html_url']}/commits/{location['details']['commit_sha']}) |\n"
+                f"{alert_type if alert_type != 'commit' else 'Commit [' + location['details']['commit_sha'][:7] + ']'}{'' if alert_type != 'commit' else '(' + pull_request['html_url']}/commits/{location['details']['commit_sha'] + ')'} |\n"
             )
 
     # One line summary of alerts found
     summary = (
         f"{'🚨' if num_secrets_alerts_detected > 0 else '👍'} Found [{num_secrets_alerts_detected}] secret scanning alert"
         f"{'' if num_secrets_alerts_detected == 1 else 's'} across [{num_secrets_alert_locations_detected}] location"
-        f"{'' if num_secrets_alert_locations_detected == 1 else 's'} that originated from a PR#{pull_request_number} commit"
+        f"{'' if num_secrets_alert_locations_detected == 1 else 's'} that originated from PR#{pull_request_number}"
     )
 
     markdown_summary = (
@@ -414,7 +432,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     # Build a markdown table of any alerts
     if len(alerts_in_pr) > 0:
         markdown_summary += (
-            "| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Commit #️⃣ |\n"
+            "| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Location #️⃣ |\n"
             "| --- | --- | --- | --- | --- | --- | --- |\n"
         )
         markdown_summary += markdown_summary_table_rows
