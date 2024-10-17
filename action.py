@@ -362,9 +362,9 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             elif location['type'] == 'pull_request_comment':
                 pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
                 comment_id = location['details']['pull_request_comment_url'].split('/')[-1]
-                print(f"comment_id for PR comment API URL: {comment_id}")
+                logging.debug(f"comment_id for PR comment API URL: {comment_id}") # DEBUG
                 for comment in pr_comments:
-                    print(f"comment['id'] from comments response: {comment['id']}")
+                    logging.debug(f"comment['id'] from comments response: {comment['id']}") # DEBUG
                     if comment['id'] == comment_id:
                         logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR comment.")
                         alerts_in_pr.append(alert)
