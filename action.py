@@ -365,8 +365,10 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                 logging.debug(f"comment_id for PR comment API URL: {comment_id}") # DEBUG
                 for comment in pr_comments:
                     logging.debug(f"comment['id'] from comments response: {comment['id']}") # DEBUG
+                    logging.debug(type(comment['id'])) # DEBUG
                     if comment['id'] == comment_id:
                         logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR comment.")
+                        logging.debug(type(comment_id)) # DEBUG
                         alerts_in_pr.append(alert)
                         break
             elif location['type'] == 'pull_request_review':
