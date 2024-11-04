@@ -203,6 +203,85 @@ def str2bool(value):
         else:
             raise ValueError(f"Invalid boolean value: {value}")
 
+def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
+    # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments
+    comments = []
+    per_page = 100
+    page = 1
+    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json'
+    }
+    proxies = { "http": http_proxy_url, "https": https_proxy_url }
+    try:
+        while True:
+            response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
+            response.raise_for_status()
+            page_comments = response.json()
+            comments.extend(page_comments)
+            
+            # Check if there are more pages
+            if len(page_comments) < 100:
+                break
+            page += 1
+        return comments
+    except requests.exceptions.HTTPError as err:
+        if response.status_code == 404:
+            print("Ensure that the access token has at least read access to pull requests.")
+            exit(1)
+        elif response.status_code == 410:
+            print("Pull request has been deleted.")
+            exit(1)
+        elif response.status_code != 200:
+            print(f"HTTP error occurred: {err}")
+            exit(1)
+    except Exception as err:
+        print(f"An error occurred: {err}")
+        exit(1)
+
+def get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl):
+    # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request
+    url = pr_review_comment_url
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json'
+    }
+    proxies = { "http": http_proxy_url, "https": https_proxy_url }
+    try:
+        response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as err:
+        if response.status_code == 404:
+            print("Ensure that the access token has at least read access to pull requests.")
+            exit(1)
+        elif response.status_code != 200:
+            print(f"HTTP error occurred: {err}")
+            exit(1)
+    except Exception as err:
+        print(f"An error occurred: {err}")
+        exit(1)
+
+def get_alert_location_type(alert_location):
+    if 'type' not in alert_location:
+        raise ValueError("Alert location does not have a 'type' field.")
+    type = alert_location['type']
+    if type == 'commit':
+        return 'Commit SHA ' + alert_location['details']['commit_sha']
+    elif type == 'pull_request_title':
+        return 'Pull request title'
+    elif type == 'pull_request_body':
+        return 'Pull request body'
+    elif type == 'pull_request_comment':
+        return 'Pull request comment'
+    elif type == 'pull_request_review':
+        return 'Pull request review'
+    elif type == 'pull_request_review_comment':
+        return 'Pull request review comment'
+    else:
+        return None
+
 def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts):
     # Check if GITHUB_TOKEN is set
     env_github_token = os.getenv('GITHUB_TOKEN', None)
@@ -267,9 +346,42 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         for location in alert_locations:
             if location['type'] == 'commit':
                 if location['details']['commit_sha'] in commit_shas:
-                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR.")
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a commit in the PR.")
                     alerts_in_pr.append(alert)
                     break
+            elif location['type'] == 'pull_request_title':
+                if location['details']['pull_request_title_url'] == pull_request['url']:
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR title.")
+                    alerts_in_pr.append(alert)
+                    break
+            elif location['type'] == 'pull_request_body':
+                if location['details']['pull_request_body_url'] == pull_request['url']:
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR body.")
+                    alerts_in_pr.append(alert)
+                    break
+            elif location['type'] == 'pull_request_comment':
+                pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
+                comment_id = location['details']['pull_request_comment_url'].split('/')[-1]
+                for comment in pr_comments:
+                    if str(comment['id']) == comment_id:
+                        logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR comment.")
+                        alerts_in_pr.append(alert)
+                        break
+            elif location['type'] == 'pull_request_review':
+                # remove '/reviews/1234567890' from the end of the pull_request_review_url to compare against the PR URL:
+                shortened_pr_review_url = location['details']['pull_request_review_url'].rstrip('/').rsplit('/', 2)[0]
+                if shortened_pr_review_url == pull_request['url']:
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review.")
+                    alerts_in_pr.append(alert)
+                    break
+            elif location['type'] == 'pull_request_review_comment':
+                pr_review_comment_url = location['details']['pull_request_review_comment_url']
+                pr_review_comment = get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl)
+                if pr_review_comment['pull_request_url'] == pull_request['url']:
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
+                    alerts_in_pr.append(alert)
+                    break
+
         # Increment the counter and log the progress
         alerts_reviewed += 1
         logging.info(f"Reviewed {alerts_reviewed} out of {len(alerts)} alerts.")
@@ -286,32 +398,41 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
         for location in alert_locations:
             num_secrets_alert_locations_detected += 1
+            alert_type = location['type']
+            alert_location = get_alert_location_type(location)
             message = (
                 f"A {'Closed as ' + alert['resolution'] if alert['state'] == 'resolved' else 'New'} Secret Detected in "
-                f"Pull Request #{pull_request_number} Commit SHA:{location['details']['commit_sha'][:7]}. "
-                f"'{alert['secret_type_display_name']}' Secret: {alert['html_url']} Commit: {pull_request['html_url']}/commits/{location['details']['commit_sha']}"
+                f"Pull Request #{pull_request_number}. "
+                f"'{alert['secret_type_display_name']}' Secret: {alert['html_url']} Location: {alert_location}"
             )
             should_bypass = (alert['state'] == 'resolved') and fail_on_alert_exclude_closed
             if fail_on_alert and not should_bypass:
-                print(f"::error file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
+                if alert_type == 'commit':
+                    print(f"::error file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
                 should_fail_action = True
                 pass_fail = "[🔴](# 'Error')"
             else:
-                print(f"::warning file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
+                if alert_type == 'commit':
+                    print(f"::warning file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
                 pass_fail = "[🟡](# 'Warning')"
 
+            if alert_type == 'commit':
+                commit_sha = location['details']['commit_sha'][:7]
+                location_value = f"Commit [{commit_sha}]({pull_request['html_url']}/commits/{location['details']['commit_sha']})"
+            else:
+                location_value = alert_location
+            
             markdown_summary_table_rows += (
                 f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
                 f"{alert['state']} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
-                f"{alert['push_protection_bypassed']} | "
-                f"[{location['details']['commit_sha'][:7]}]({pull_request['html_url']}/commits/{location['details']['commit_sha']}) |\n"
+                f"{alert['push_protection_bypassed']} | {location_value} |\n"
             )
 
     # One line summary of alerts found
     summary = (
         f"{'🚨' if num_secrets_alerts_detected > 0 else '👍'} Found [{num_secrets_alerts_detected}] secret scanning alert"
         f"{'' if num_secrets_alerts_detected == 1 else 's'} across [{num_secrets_alert_locations_detected}] location"
-        f"{'' if num_secrets_alert_locations_detected == 1 else 's'} that originated from a PR#{pull_request_number} commit"
+        f"{'' if num_secrets_alert_locations_detected == 1 else 's'} that originated from PR#{pull_request_number}"
     )
 
     markdown_summary = (
@@ -321,7 +442,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     # Build a markdown table of any alerts
     if len(alerts_in_pr) > 0:
         markdown_summary += (
-            "| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Commit #️⃣ |\n"
+            "| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Location #️⃣ |\n"
             "| --- | --- | --- | --- | --- | --- | --- |\n"
         )
         markdown_summary += markdown_summary_table_rows
