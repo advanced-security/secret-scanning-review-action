@@ -37,6 +37,10 @@ inputs:
     description: 'A boolean to enable or disable skipping closed alerts from evaluation (python runtime only).'
     required: false
     default: 'false'
+  python-disable-workflow-summary:
+    description: 'A boolean to disable the workflow summary comment (python runtime only).'
+    required: false
+    default: 'false'
 runs:
     using: composite
     steps:
@@ -48,7 +52,7 @@ runs:
         if: ${{ inputs.runtime == 'python' }}
         run: |
           pip install -r ${{ github.action_path }}/requirements.txt
-          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }} --SkipClosedAlerts ${{ inputs.python-skip-closed-alerts }}
+          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }} --SkipClosedAlerts ${{ inputs.python-skip-closed-alerts }} --DisableWorkflowSummary ${{ inputs.python-disable-workflow-summary }}
         shell: bash
 branding:
   icon: "lock"
