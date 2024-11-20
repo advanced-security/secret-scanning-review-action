@@ -495,6 +495,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             "push_protection_bypassed": alert["push_protection_bypassed"],
             "push_protection_bypassed_by": alert["push_protection_bypassed_by"]
         })
+
+    print("alerts step output:\n" + {step_output})
     
     # Write the alert details to the step output
     with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
