@@ -496,7 +496,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         # f.write(f"alerts={step_output_json}")
         print("{0}={1}".format("alerts", "testing123"), file=f)
 
-    subprocess.run(f"cat {os.environ["GITHUB_OUTPUT"]}")
+    subprocess.run(f"cat {os.environ['GITHUB_OUTPUT']}")
 
     # print(f"echo alerts={step_output_json} >> $GITHUB_OUTPUT")
 
