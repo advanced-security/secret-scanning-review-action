@@ -494,7 +494,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
         f.write(f"alerts={step_output_json}")
 
-    print(os.getenv['GITHUB_OUTPUT'])
+    print(os.getenv('GITHUB_OUTPUT'))
 
     # print(f"echo alerts={step_output_json} >> $GITHUB_OUTPUT")
 
