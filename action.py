@@ -473,19 +473,6 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         else:
             print("GITHUB_STEP_SUMMARY environment variable is not set.")
 
-
-    # Output Message Summary and set exit code
-    # - any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
-    # - otherwise, return 0
-    if len(alerts_in_pr) > 0 and should_fail_action:
-        # Log an error message and set the action as failed
-        print(f"::error::{summary}")
-        exit(1)
-    else:
-        # Log an informational message
-        print(f"::notice::{summary}")
-        exit(0)
-
     # Create step output JSON with alert number, URL, push protection bypass boolean, and push protection bypass actor
     step_output = []
     for alert in alerts_in_pr:
@@ -500,7 +487,19 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     
     # Write the alert details to the step output
     with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-        f.write('alerts=' + step_output + '\n')
+        f.write(f'alerts={step_output}')
+
+    # Output Message Summary and set exit code
+    # - any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
+    # - otherwise, return 0
+    if len(alerts_in_pr) > 0 and should_fail_action:
+        # Log an error message and set the action as failed
+        print(f"::error::{summary}")
+        exit(1)
+    else:
+        # Log an informational message
+        print(f"::notice::{summary}")
+        exit(0)
 
 
 if __name__ == "__main__":
