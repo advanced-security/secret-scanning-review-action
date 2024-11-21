@@ -6,6 +6,7 @@ import requests
 import argparse
 import re
 import json
+import subprocess
 from datetime import datetime, timezone
 
 def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
@@ -494,6 +495,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     with open(os.environ["GITHUB_OUTPUT"], "a") as f:
         # f.write(f"alerts={step_output_json}")
         print("{0}={1}".format("alerts", "testing123"), file=f)
+
+    subprocess.run(f"cat {os.environ["GITHUB_OUTPUT"]}")
 
     # print(f"echo alerts={step_output_json} >> $GITHUB_OUTPUT")
 
