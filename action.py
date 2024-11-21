@@ -492,7 +492,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     
     # Write the alert details to the step output
     with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-        f.write(f"alerts={step_output_json}")
+        # f.write(f"alerts={step_output_json}")
+        print(f'alerts={step_output_json}', file=f)
 
     print(os.getenv('GITHUB_OUTPUT'))
 
