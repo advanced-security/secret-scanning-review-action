@@ -5,6 +5,7 @@ import logging
 import requests
 import argparse
 import re
+import json
 from datetime import datetime, timezone
 
 def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
@@ -483,11 +484,15 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             "push_protection_bypassed_by": alert["push_protection_bypassed_by"]
         })
 
-    print(f"alerts step output:\n{step_output}")
+    # convert step_output to valid JSON:
+    step_output_json = json.dumps(step_output)
+    
+
+    print(f"alerts step output:\n{step_output_json}")
     
     # Write the alert details to the step output
     with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-        f.write(f'alerts={step_output}')
+        f.write(f'alerts={step_output_json}')
 
     # Output Message Summary and set exit code
     # - any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
