@@ -494,6 +494,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
         f.write(f"alerts={step_output_json}\n")
 
+    print(os.environ['GITHUB_OUTPUT'])
+
     # Output Message Summary and set exit code
     # - any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
     # - otherwise, return 0
