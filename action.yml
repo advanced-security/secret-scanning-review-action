@@ -41,6 +41,9 @@ inputs:
     description: 'A boolean to disable the workflow summary comment (python runtime only).'
     required: false
     default: 'false'
+outputs:
+  alerts:
+    description: 'Details about the alerts detected in the PR.'
 runs:
     using: composite
     steps:
