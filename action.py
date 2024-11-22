@@ -499,7 +499,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
 
     if "GITHUB_OUTPUT" in os.environ :
         with open(os.environ["GITHUB_OUTPUT"], "a") as f :
-            print("{0}={1}".format("alerts", "test"), file=f)
+            f.write(f"alerts={step_output_json}")
         print("able to write to GITHUB_OUTPUT")
 
 
