@@ -49,6 +49,34 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
 <img width="854" alt="Secret Scanning Review Workflow Checks" src="https://github.com/advanced-security/secret-scanning-review-action/assets/1760475/5b743082-33d2-45d1-bef2-c0bb5d796932">
 
+### Step Output of Alert Metadata (python runtime only)
+
+When running the Action with the `python` runtime option, the Action will also provide a summary of the secrets introduced in the pull request as a step output variable, `alerts`. You can access this step output in subsequent steps in your workflow. For example, to print the alert metadata in the workflow log:
+
+```yaml
+[...]
+- name: 'Secret Scanning Review Action'
+  uses: advanced-security/secret-scanning-review-action@main
+  id: secret-alert-check
+  with:
+    token: ${{ steps.app-token.outputs.token }}
+    runtime: 'python'
+
+- name: 'Process step output'
+  if: always()
+  run: |
+    echo "${{ steps.secret-alert-check.outputs.alerts }}"
+```
+
+The `alerts` variable is set to a JSON array with the following fields for each alert detected in the PR:
+- `number`: The ID of the alert
+- `secret_type`: The type of secret detected
+- `push_protection_bypassed`: Whether the alert was introduced in a commit that bypassed push protection
+- `push_protection_bypassed_by`: The user who bypassed push protection
+- `state`: The state of the alert
+- `resolution`: The resolution of the alert
+- `html_url`: The URL to the alert in the GitHub UI
+
 ## Security Model Considerations
 * To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
 
@@ -96,6 +124,9 @@ NOTE:
 
 ### `python-skip-closed-alerts`
 **OPTIONAL** If provided, will only process open alerts. Default `'false'`.
+
+### `python-disable-workflow-summary`
+**OPTIONAL** If provided, will not put a summary of detected secrets in the workflow run summary. Default `'false'`.
 
 ## Example usage
 

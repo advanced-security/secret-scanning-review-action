@@ -480,30 +480,20 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     for alert in alerts_in_pr:
         step_output.append({
             "number": alert["number"],
-            "url": alert["html_url"],
+            "secret_type": alert["secret_type"],
             "push_protection_bypassed": alert["push_protection_bypassed"],
-            "push_protection_bypassed_by": alert["push_protection_bypassed_by"]
+            "push_protection_bypassed_by": alert["push_protection_bypassed_by"],
+            "state": alert["state"],
+            "resolution": alert["resolution"],
+            "html_url": alert["html_url"]
         })
 
     # convert step_output to valid JSON:
     step_output_json = json.dumps(step_output)
     
-
-    print(f"alerts step output:\n{step_output_json}")
-    
-    # Write the alert details to the step output
-    # with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-    #     print(f"alerts={step_output_json}", file=fh)
-
-    # print(f'"alerts={step_output_json}" >> "$GITHUB_OUTPUT"')
-
     if "GITHUB_OUTPUT" in os.environ :
         with open(os.environ["GITHUB_OUTPUT"], "a") as f :
             f.write(f"alerts={step_output_json}")
-        print("able to write to GITHUB_OUTPUT with new approach!")
-
-
-    # print(f"echo alerts={step_output_json} >> $GITHUB_OUTPUT")
 
     # Output Message Summary and set exit code
     # - any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
