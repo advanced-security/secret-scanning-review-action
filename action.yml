@@ -44,6 +44,7 @@ inputs:
 outputs:
   alerts:
     description: 'Details about the alerts detected in the PR.'
+    value: ${{ steps.python-run.outputs.alerts}}
 runs:
     using: composite
     steps:
@@ -53,6 +54,7 @@ runs:
         shell: pwsh
       - name: Run Python Script
         if: ${{ inputs.runtime == 'python' }}
+        id: python-run
         run: |
           pip install -r ${{ github.action_path }}/requirements.txt
           python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }} --SkipClosedAlerts ${{ inputs.python-skip-closed-alerts }} --DisableWorkflowSummary ${{ inputs.python-disable-workflow-summary }}
