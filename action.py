@@ -5,6 +5,8 @@ import logging
 import requests
 import argparse
 import re
+import json
+import subprocess
 from datetime import datetime, timezone
 
 def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
@@ -282,7 +284,7 @@ def get_alert_location_type(alert_location):
     else:
         return None
 
-def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts):
+def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_comment, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts, disable_workflow_summary):
     # Check if GITHUB_TOKEN is set
     env_github_token = os.getenv('GITHUB_TOKEN', None)
 
@@ -451,24 +453,47 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     if not disable_pr_comment and len(alerts_in_pr) > 0:
         update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary, http_proxy_url, https_proxy_url, verify_ssl)
     else:
-        print(f"Skipping PR comment update - DisablePRComment is set to {disable_pr_comment} and alertsInitiatedFromPr is {len(alerts_in_pr)}")
+        print(f"Skipping PR comment update - disable-pr-comment is set to {disable_pr_comment} and alert count in PR is {len(alerts_in_pr)}")
     
-    # Output Step Summary - To the GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
-    github_step_summary = os.environ.get('GITHUB_STEP_SUMMARY')
-    
-    if github_step_summary:
-        with open(github_step_summary, 'w') as summary_file:
-            summary_file.write(markdown_summary)
-        
-        # Log the path of the GITHUB_STEP_SUMMARY file
-        print(f"Markdown Summary from env var GITHUB_STEP_SUMMARY: '{github_step_summary}'")
-        
-        # Read and log the content of the GITHUB_STEP_SUMMARY file
-        with open(github_step_summary, 'r') as summary_file:
-            content = summary_file.read()
-            print(content)
+    if disable_workflow_summary:
+        print(f"Skipping workflow summary - disable-workflow-summary is set to {disable_workflow_summary}")
     else:
-        print("GITHUB_STEP_SUMMARY environment variable is not set.")
+        # Output Step Summary - To the GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
+        github_step_summary = os.environ.get('GITHUB_STEP_SUMMARY')
+        
+        if github_step_summary:
+            with open(github_step_summary, 'w') as summary_file:
+                summary_file.write(markdown_summary)
+            
+            # Log the path of the GITHUB_STEP_SUMMARY file
+            print(f"Markdown Summary from env var GITHUB_STEP_SUMMARY: '{github_step_summary}'")
+            
+            # Read and log the content of the GITHUB_STEP_SUMMARY file
+            with open(github_step_summary, 'r') as summary_file:
+                content = summary_file.read()
+                print(content)
+        else:
+            print("GITHUB_STEP_SUMMARY environment variable is not set.")
+
+    # Create step output JSON with alert number, URL, push protection bypass boolean, and push protection bypass actor
+    step_output = []
+    for alert in alerts_in_pr:
+        step_output.append({
+            "number": alert["number"],
+            "secret_type": alert["secret_type"],
+            "push_protection_bypassed": alert["push_protection_bypassed"],
+            "push_protection_bypassed_by": alert["push_protection_bypassed_by"],
+            "state": alert["state"],
+            "resolution": alert["resolution"],
+            "html_url": alert["html_url"]
+        })
+
+    # convert step_output to valid JSON:
+    step_output_json = json.dumps(step_output)
+    
+    if "GITHUB_OUTPUT" in os.environ :
+        with open(os.environ["GITHUB_OUTPUT"], "a") as f :
+            f.write(f"alerts={step_output_json}")
 
     # Output Message Summary and set exit code
     # - any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
@@ -496,6 +521,7 @@ if __name__ == "__main__":
     parser.add_argument("--ProxyURLHTTPS", type=str, required=False, help="HTTPS Proxy URL")
     parser.add_argument("--VerifySSL", type=str2bool, required=False, help="Verify SSL")
     parser.add_argument("--SkipClosedAlerts", type=str2bool, required=False, help="Skip closed alerts")
+    parser.add_argument("--DisableWorkflowSummary", type=str2bool, required=False, help="Disable workflow summary")
 
     args = parser.parse_args()
-    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTPS, args.ProxyURLHTTP, args.VerifySSL, args.SkipClosedAlerts)
+    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTPS, args.ProxyURLHTTP, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary)

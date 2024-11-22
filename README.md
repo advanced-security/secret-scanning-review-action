@@ -49,6 +49,83 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
 <img width="854" alt="Secret Scanning Review Workflow Checks" src="https://github.com/advanced-security/secret-scanning-review-action/assets/1760475/5b743082-33d2-45d1-bef2-c0bb5d796932">
 
+### Step Output of Alert Metadata (python runtime only)
+
+When running the Action with the `python` runtime option, the Action will also provide a summary of the secrets introduced in the pull request as a step output variable, `alerts`. You can access this step output in subsequent steps in your workflow for any further processing that you would like to perform.
+
+> [!NOTE]
+> The `alerts` step output does NOT include secret values.
+
+An example of how to access this step output in your Actions workflow is shown below:
+
+```yaml
+[...]
+- name: 'Secret Scanning Review Action'
+  uses: advanced-security/secret-scanning-review-action@main
+  id: secret-alert-check
+  with:
+    token: ${{ steps.app-token.outputs.token }}
+    runtime: 'python'
+
+- name: 'Log alert metadata'
+  if: always()
+  run: |
+    echo ${{ steps.secret-alert-check.outputs.alerts }}
+```
+
+The `alerts` variable is set to a JSON array with the following fields for each alert detected in the PR:
+- `number`: The ID of the alert
+- `secret_type`: The type of secret detected
+- `push_protection_bypassed`: Whether the alert was introduced in a commit that bypassed push protection
+- `push_protection_bypassed_by`: The user who bypassed push protection
+- `state`: The state of the alert
+- `resolution`: The resolution of the alert
+- `html_url`: The URL to the alert in the GitHub UI
+
+An example of the `alerts` step output variable is shown below, where two different secrets were introduced in a PR:
+```json
+[
+    {
+        "number": 68,
+        "secret_type": "hardcoded_password",
+        "push_protection_bypassed": false,
+        "push_protection_bypassed_by": null,
+        "state": "open",
+        "resolution": null,
+        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/68"
+    },
+    {
+        "number": 67,
+        "secret_type": "hardcoded_password",
+        "push_protection_bypassed": true,
+        "push_protection_bypassed_by": {
+            "login": "CallMeGreg",
+            "id": 110078080,
+            "node_id": "U_kgDOBo-ogA",
+            "avatar_url": "https://avatars.githubusercontent.com/u/110078080?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/CallMeGreg",
+            "html_url": "https://github.com/CallMeGreg",
+            "followers_url": "https://api.github.com/users/CallMeGreg/followers",
+            "following_url": "https://api.github.com/users/CallMeGreg/following{/other_user}",
+            "gists_url": "https://api.github.com/users/CallMeGreg/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/CallMeGreg/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/CallMeGreg/subscriptions",
+            "organizations_url": "https://api.github.com/users/CallMeGreg/orgs",
+            "repos_url": "https://api.github.com/users/CallMeGreg/repos",
+            "events_url": "https://api.github.com/users/CallMeGreg/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/CallMeGreg/received_events",
+            "type": "User",
+            "user_view_type": "public",
+            "site_admin": true
+        },
+        "state": "resolved",
+        "resolution": "false_positive",
+        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/67"
+    }
+]
+```
+
 ## Security Model Considerations
 * To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
 
@@ -96,6 +173,9 @@ NOTE:
 
 ### `python-skip-closed-alerts`
 **OPTIONAL** If provided, will only process open alerts. Default `'false'`.
+
+### `python-disable-workflow-summary`
+**OPTIONAL** If provided, will not put a summary of detected secrets in the workflow run summary. Default `'false'`.
 
 ## Example usage
 
