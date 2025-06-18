@@ -20,7 +20,7 @@ jobs:
 
       - name: "CodeQL Extractor Action"
         id: codeql
-        uses: advanced-security/codeql-extractor-action@v0.0.13
+        uses: advanced-security/codeql-extractor-action@v0.0.16
         with:
           extractors: "microsoft/codeql"
           packs: "microsoft/powershell-queries"
