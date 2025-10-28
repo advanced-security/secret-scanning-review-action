@@ -325,7 +325,9 @@ foreach ($alert in $alerts) {
             }
             'pull_request_comment' {
                 $prComments = Get-PullRequestComments -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber
-                $commentId = ($location.details.pull_request_comment_url -split '/')[-1]
+                # Extract comment ID from the URL (last segment of the path)
+                $uri = [uri]$location.details.pull_request_comment_url
+                $commentId = ($uri.AbsolutePath -split '/')[-1]
                 foreach ($comment in $prComments) {
                     if ($comment.id -eq $commentId) {
                         Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR comment."
@@ -335,9 +337,13 @@ foreach ($alert in $alerts) {
                 }
             }
             'pull_request_review' {
-                # Remove '/reviews/1234567890' from the end of the pull_request_review_url to compare against the PR URL
-                $reviewUrlParts = $location.details.pull_request_review_url.TrimEnd('/') -split '/'
-                $shortenedPrReviewUrl = ($reviewUrlParts[0..($reviewUrlParts.Length - 3)] -join '/')
+                # Remove '/reviews/{review_id}' from the end of the pull_request_review_url to compare against the PR URL
+                # Example: https://api.github.com/repos/owner/repo/pulls/123/reviews/456 -> https://api.github.com/repos/owner/repo/pulls/123
+                $reviewUri = [uri]$location.details.pull_request_review_url
+                $pathSegments = $reviewUri.AbsolutePath.TrimEnd('/') -split '/'
+                # Remove last 2 segments ("/reviews/{review_id}")
+                $shortenedPath = ($pathSegments[0..($pathSegments.Length - 3)] -join '/')
+                $shortenedPrReviewUrl = "$($reviewUri.Scheme)://$($reviewUri.Host)$shortenedPath"
                 if ($shortenedPrReviewUrl -eq $pr.url) {
                     Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review."
                     $matchFound = $true
@@ -499,12 +505,12 @@ foreach ($alert in $alertsInitiatedFromPr) {
     }
 }
 
-# Convert step output to JSON
-$stepOutputJson = $stepOutput | ConvertTo-Json -Compress -Depth 10
+# Convert step output to JSON (Depth 3 is sufficient for the nested structure: array of objects with possible nested objects)
+$stepOutputJson = $stepOutput | ConvertTo-Json -Compress -Depth 3
 
 # Write step output to GITHUB_OUTPUT environment file
 if ($env:GITHUB_OUTPUT) {
-    "alerts=$stepOutputJson" >> $env:GITHUB_OUTPUT
+    Add-Content -Path $env:GITHUB_OUTPUT -Value "alerts=$stepOutputJson"
     Write-ActionDebug "Step output written to GITHUB_OUTPUT: $stepOutputJson"
 }
 
