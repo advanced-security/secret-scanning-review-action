@@ -341,7 +341,7 @@ foreach ($alert in $alerts) {
                 # Example: https://api.github.com/repos/owner/repo/pulls/123/reviews/456 -> https://api.github.com/repos/owner/repo/pulls/123
                 $reviewUri = [uri]$location.details.pull_request_review_url
                 $pathSegments = $reviewUri.AbsolutePath.TrimEnd('/') -split '/'
-                # Remove last 2 segments ("/reviews/{review_id}")
+                # Keep all segments except the last 2 ("reviews" and "{review_id}")
                 $shortenedPath = ($pathSegments[0..($pathSegments.Length - 3)] -join '/')
                 $shortenedPrReviewUrl = "$($reviewUri.Scheme)://$($reviewUri.Host)$shortenedPath"
                 if ($shortenedPrReviewUrl -eq $pr.url) {
@@ -510,8 +510,13 @@ $stepOutputJson = $stepOutput | ConvertTo-Json -Compress -Depth 3
 
 # Write step output to GITHUB_OUTPUT environment file
 if ($env:GITHUB_OUTPUT) {
-    Add-Content -Path $env:GITHUB_OUTPUT -Value "alerts=$stepOutputJson"
-    Write-ActionDebug "Step output written to GITHUB_OUTPUT: $stepOutputJson"
+    try {
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "alerts=$stepOutputJson"
+        Write-ActionDebug "Step output written to GITHUB_OUTPUT: $stepOutputJson"
+    }
+    catch {
+        Write-ActionWarning "Failed to write step output to GITHUB_OUTPUT: $($_.Exception.Message)"
+    }
 }
 
 #Output Message Summary and set exit code
