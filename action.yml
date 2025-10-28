@@ -41,16 +41,21 @@ inputs:
     description: 'A boolean to disable the workflow summary comment (python runtime only).'
     required: false
     default: 'false'
+  powershell-disable-workflow-summary:
+    description: 'A boolean to disable the workflow summary comment (powershell runtime only).'
+    required: false
+    default: 'false'
 outputs:
   alerts:
     description: 'Details about the alerts detected in the PR.'
-    value: ${{ steps.python-run.outputs.alerts}}
+    value: ${{ steps.python-run.outputs.alerts || steps.powershell-run.outputs.alerts }}
 runs:
     using: composite
     steps:
       - name: Run Powershell Script
         if: ${{ inputs.runtime == 'powershell' }}
-        run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }}
+        id: powershell-run
+        run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }} -DisableWorkflowSummary $${{ inputs.powershell-disable-workflow-summary }}
         shell: pwsh
       - name: Run Python Script
         if: ${{ inputs.runtime == 'python' }}
