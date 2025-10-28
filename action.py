@@ -9,6 +9,11 @@ import json
 import subprocess
 from datetime import datetime, timezone
 
+# List of supported generic secret types as per:
+# https://docs.github.com/en/code-security/secret-scanning/introduction/supported-secret-scanning-patterns
+# Includes non-provider patterns and copilot patterns
+GENERIC_SECRET_TYPES = "password,ec_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_string,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key"
+
 def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-commits-on-a-pull-request
     all_commits = []
@@ -343,10 +348,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     logging.debug(f"Found {len(alerts)} default alerts.")
     
     # Get generic secrets (non-provider patterns and copilot patterns)
-    # List of supported generic secret types as per: https://docs.github.com/en/code-security/secret-scanning/introduction/supported-secret-scanning-patterns
-    generic_secret_types = "password,ec_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_string,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key"
     logging.debug("Getting the secret scanning alerts for the repo (generic secret types).")
-    generic_alerts = get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts, secret_type=generic_secret_types)
+    generic_alerts = get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts, secret_type=GENERIC_SECRET_TYPES)
     logging.debug(f"Found {len(generic_alerts)} generic alerts.")
     
     # Merge alerts and deduplicate by alert number
