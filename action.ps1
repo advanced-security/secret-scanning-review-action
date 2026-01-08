@@ -186,11 +186,11 @@ $perPage = 100
 $repoAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage"
 try {
     $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl -ExtendedResult $true
-    $alerts = $alertsResponse.result
+    $alerts = [System.Collections.ArrayList]@($alertsResponse.result)
     # Get the next page of secret scanning alerts if there is one
     while ($alertsResponse.nextLink) {
         $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $alertsResponse.nextLink -ExtendedResult $true
-        $alerts += $alertsResponse.result
+        $alerts.AddRange($alertsResponse.result)
     }
     Write-ActionInfo "Found $($alerts.Count) default secret scanning alert$($alerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
 }
@@ -202,14 +202,14 @@ catch {
 $genericAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage&secret_type=$GENERIC_SECRET_TYPES"
 try {
     $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsUrl -ExtendedResult $true
-    $genericAlerts = $genericAlertsResponse.result
+    $genericAlerts = [System.Collections.ArrayList]@($genericAlertsResponse.result)
     # Get the next page of generic secret scanning alerts if there is one
     while ($genericAlertsResponse.nextLink) {
         $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsResponse.nextLink -ExtendedResult $true
-        $genericAlerts += $genericAlertsResponse.result
+        $genericAlerts.AddRange($genericAlertsResponse.result)
     }
     Write-ActionInfo "Found $($genericAlerts.Count) generic secret scanning alert$($genericAlerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
-    
+
     # Merge alerts and deduplicate by alert number
     $alertNumbers = @{}
     foreach ($alert in $alerts) {
@@ -217,7 +217,7 @@ try {
     }
     foreach ($genericAlert in $genericAlerts) {
         if (-not $alertNumbers.ContainsKey($genericAlert.number)) {
-            $alerts += $genericAlert
+            [void]$alerts.Add($genericAlert)
             $alertNumbers[$genericAlert.number] = $true
         }
     }
