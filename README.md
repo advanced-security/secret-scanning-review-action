@@ -5,7 +5,7 @@
 ![GitHub Stars](https://img.shields.io/github/stars/advanced-security/secret-scanning-review-action)
 ![GitHub forks](https://img.shields.io/github/forks/advanced-security/secret-scanning-review-action)
 
-[![Latest](https://img.shields.io/github/release/advanced-security/secret-scanning-review-action.svg)](https://github.com/advanced-security/secret-scanning-review-action/releases) 
+[![Latest](https://img.shields.io/github/release/advanced-security/secret-scanning-review-action.svg)](https://github.com/advanced-security/secret-scanning-review-action/releases)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/advanced-security/secret-scanning-review-action/badge)](https://scorecard.dev/viewer/?uri=github.com/advanced-security/secret-scanning-review-action)
 ![GitHub License](https://img.shields.io/github/license/advanced-security/secret-scanning-review-action)
 
@@ -61,7 +61,7 @@ An example of how to access this step output in your Actions workflow is shown b
 ```yaml
 [...]
 - name: 'Secret Scanning Review Action'
-  uses: advanced-security/secret-scanning-review-action@main
+  uses: advanced-security/secret-scanning-review-action@v2
   id: secret-alert-check
   with:
     token: ${{ steps.app-token.outputs.token }}
@@ -193,7 +193,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Secret Scanning Review Action'
-        uses: advanced-security/secret-scanning-review-action@v1
+        uses: advanced-security/secret-scanning-review-action@v2
         with:
           token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
           fail-on-alert: true
