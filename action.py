@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 # List of supported generic secret types as per:
 # https://docs.github.com/en/code-security/secret-scanning/introduction/supported-secret-scanning-patterns
 # Includes non-provider patterns and copilot patterns
-GENERIC_SECRET_TYPES = "password,ec_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_string,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key"
+GENERIC_SECRET_TYPES = "password,ec_private_key,generic_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_string,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key"
 
 def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-commits-on-a-pull-request

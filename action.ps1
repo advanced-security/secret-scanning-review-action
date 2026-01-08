@@ -75,7 +75,7 @@ param(
 # List of supported generic secret types as per:
 # https://docs.github.com/en/code-security/secret-scanning/introduction/supported-secret-scanning-patterns
 # Includes non-provider patterns and copilot patterns
-Set-Variable -Name GENERIC_SECRET_TYPES -Value "password,ec_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_string,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key" -Option ReadOnly -Scope Script
+Set-Variable -Name GENERIC_SECRET_TYPES -Value "password,ec_private_key,generic_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_string,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key" -Option ReadOnly -Scope Script
 
 # Handle `Untrusted repository` prompt
 Set-PSRepository PSGallery -InstallationPolicy Trusted
