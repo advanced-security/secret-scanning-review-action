@@ -72,6 +72,11 @@ param(
     [bool]$DisablePRComment
 )
 
+# List of supported generic secret types as per:
+# https://docs.github.com/en/code-security/secret-scanning/introduction/supported-secret-scanning-patterns
+# Includes non-provider patterns and copilot patterns
+Set-Variable -Name GENERIC_SECRET_TYPES -Value "password,ec_private_key,generic_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_string,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key" -Option ReadOnly -Scope Script
+
 # Handle `Untrusted repository` prompt
 Set-PSRepository PSGallery -InstallationPolicy Trusted
 
@@ -173,21 +178,53 @@ Write-ActionInfo "PR#$PullRequestNumber Commit SHA list: $($prCommitShaList -joi
     - format: /repos/{owner}/{repo}/secret-scanning/alerts
     - note: This endpoint is only available for organizations and repositories in the Enterprise Cloud.
     - note: This endpoint returns ALL (both: open and resolved) secret scanning alerts.
+    - note: We make two calls: one for default provider-based patterns, and another for generic secrets
 #>
 $perPage = 100
+
+# First call: Get default provider-based secret scanning alerts
 $repoAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage"
 try {
     $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl -ExtendedResult $true
-    $alerts = $alertsResponse.result
+    $alerts = [System.Collections.ArrayList]@($alertsResponse.result)
     # Get the next page of secret scanning alerts if there is one
     while ($alertsResponse.nextLink) {
         $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $alertsResponse.nextLink -ExtendedResult $true
-        $alerts += $alertsResponse.result
+        $alerts.AddRange($alertsResponse.result)
     }
-    Write-ActionInfo "Found $($alerts.Count) secret scanning alert$($alerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
+    Write-ActionInfo "Found $($alerts.Count) default secret scanning alert$($alerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
 }
 catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+}
+
+# Second call: Get generic secret scanning alerts (non-provider patterns and copilot patterns)
+$genericAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage&secret_type=$GENERIC_SECRET_TYPES"
+try {
+    $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsUrl -ExtendedResult $true
+    $genericAlerts = [System.Collections.ArrayList]@($genericAlertsResponse.result)
+    # Get the next page of generic secret scanning alerts if there is one
+    while ($genericAlertsResponse.nextLink) {
+        $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsResponse.nextLink -ExtendedResult $true
+        $genericAlerts.AddRange($genericAlertsResponse.result)
+    }
+    Write-ActionInfo "Found $($genericAlerts.Count) generic secret scanning alert$($genericAlerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
+
+    # Merge alerts and deduplicate by alert number
+    $alertNumbers = @{}
+    foreach ($alert in $alerts) {
+        $alertNumbers[$alert.number] = $true
+    }
+    foreach ($genericAlert in $genericAlerts) {
+        if (-not $alertNumbers.ContainsKey($genericAlert.number)) {
+            [void]$alerts.Add($genericAlert)
+            $alertNumbers[$genericAlert.number] = $true
+        }
+    }
+    Write-ActionInfo "Found $($alerts.Count) total secret scanning alert$($alerts.Count -eq 1 ? '' : 's') after merging and deduplication"
+}
+catch {
+    Write-ActionWarning -Message "Error getting generic secret scanning alerts for '$OrganizationName/$RepositoryName'. This may be expected if generic secrets are not enabled. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
 #for each secret scanning alert, find the initial location of the secret and theh list
