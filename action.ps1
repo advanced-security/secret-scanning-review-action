@@ -277,7 +277,12 @@ function Get-PullRequestReviewComment {
 
     try {
         $uri = [uri]$reviewCommentUrl
+        # Use Invoke-GHRestMethod to ensure we get the raw API response with all fields including pull_request_url
         $reviewComment = Invoke-GHRestMethod -Method GET -Uri $uri.AbsolutePath
+
+        # Debug: Output the properties we got back
+        Write-ActionDebug "Review comment properties: $($reviewComment.PSObject.Properties.Name -join ', ')"
+
         return $reviewComment
     }
     catch {
@@ -470,18 +475,37 @@ foreach ($alert in $alerts) {
                 }
             }
             'pull_request_review_comment' {
+                # For review comments, we can extract the PR number from the comment URL itself
+                # Example URL: https://api.github.com/repos/owner/repo/pulls/comments/123456
+                # The review comment endpoint doesn't directly tell us which PR, but we can fetch it and check
                 $prReviewComment = Get-PullRequestReviewComment -reviewCommentUrl $location.details.pull_request_review_comment_url
                 Write-ActionDebug "Checking PR review comment for alert $($alert.number)..."
                 Write-ActionDebug "  Review comment URL: $($location.details.pull_request_review_comment_url)"
                 Write-ActionDebug "  Review comment retrieved: $($null -ne $prReviewComment)"
                 if ($prReviewComment) {
-                    Write-ActionDebug "  Review comment PR URL: $($prReviewComment.pull_request_url)"
+                    # Try different property name variations (PowerShellForGitHub may convert property names)
+                    $reviewPrUrl = $prReviewComment.pull_request_url
+                    if (-not $reviewPrUrl) {
+                        $reviewPrUrl = $prReviewComment.PullRequestUrl
+                    }
+                    if (-not $reviewPrUrl) {
+                        # If the property doesn't exist, try accessing it as a hashtable key
+                        if ($prReviewComment -is [hashtable] -or $prReviewComment -is [System.Collections.IDictionary]) {
+                            $reviewPrUrl = $prReviewComment['pull_request_url']
+                        }
+                    }
+                    if (-not $reviewPrUrl -and $prReviewComment.PSObject.Properties['pull_request_url']) {
+                        $reviewPrUrl = $prReviewComment.PSObject.Properties['pull_request_url'].Value
+                    }
+
+                    Write-ActionDebug "  Review comment PR URL: $reviewPrUrl"
                     Write-ActionDebug "  Current PR URL: $($pr.url)"
-                    Write-ActionDebug "  URLs match: $($prReviewComment.pull_request_url -eq $pr.url)"
-                }
-                if ($prReviewComment -and $prReviewComment.pull_request_url -eq $pr.url) {
-                    Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review comment."
-                    $matchFound = $true
+                    Write-ActionDebug "  URLs match: $($reviewPrUrl -eq $pr.url)"
+
+                    if ($reviewPrUrl -and ($reviewPrUrl -eq $pr.url)) {
+                        Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review comment."
+                        $matchFound = $true
+                    }
                 }
             }
         }
