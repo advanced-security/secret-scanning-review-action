@@ -173,7 +173,7 @@ function Get-PullRequestHtmlUrl {
         return $response.html_url
     }
     catch {
-        Write-ActionDebug "Error getting html_url from $apiUrl : $($_.Exception.Message)"
+        # Silently return null for pending/deleted review comments (404 expected)
         return $null
     }
 }
@@ -227,12 +227,14 @@ function Get-AlertLocationWithLink {
         'pull_request_review_comment' {
             $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_review_comment_url
             if ($htmlUrl) {
+                # API call succeeded - use the html_url from the response
                 return "[$locationType]($htmlUrl)"
             }
 
-            # Fallback for pending review comments (API returns 404 but we can construct the URL)
-            # Extract comment ID from URL: .../pulls/comments/12345 -> 12345
+            # If we reach here, $htmlUrl is null (API call failed, likely 404 for pending/deleted review comment)
+            # Fallback: manually construct the GitHub URL from the comment ID
             if ($location.details.pull_request_review_comment_url) {
+                Write-ActionDebug "API call failed for $($location.details.pull_request_review_comment_url), constructing URL from comment ID"
                 $uri = [uri]$location.details.pull_request_review_comment_url
                 $commentId = ($uri.AbsolutePath -split '/')[-1]
                 $pathSegments = $uri.AbsolutePath -split '/'
