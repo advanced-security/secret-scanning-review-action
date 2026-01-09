@@ -128,6 +128,20 @@ $cred = New-Object System.Management.Automation.PSCredential "username is ignore
 Set-GitHubAuthentication -Credential $cred
 $GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
+# Helper function to extract ID from URL path
+function Get-IdFromUrl {
+    param(
+        [string]$url
+    )
+
+    if (-not $url) {
+        return $null
+    }
+
+    $uri = [uri]$url
+    return ($uri.AbsolutePath -split '/')[-1]
+}
+
 # Helper function to get alert location type description
 function Get-AlertLocationType {
     param($location)
@@ -239,8 +253,8 @@ function Get-AlertLocationWithLink {
             # If we reach here, $htmlUrl is null (API call failed, likely 404 for pending/deleted review comment)
             # Fallback: manually construct the GitHub URL from the comment ID
             if ($location.details.pull_request_review_comment_url) {
+                $commentId = Get-IdFromUrl -url $location.details.pull_request_review_comment_url
                 $uri = [uri]$location.details.pull_request_review_comment_url
-                $commentId = ($uri.AbsolutePath -split '/')[-1]
                 $pathSegments = $uri.AbsolutePath -split '/'
                 # Extract repo path: /repos/owner/repo/pulls/comments/12345 -> owner/repo
                 $owner = $pathSegments[2]
@@ -286,6 +300,36 @@ function Get-PullRequestComments {
     catch {
         Write-ActionDebug "Error getting PR comments: $($_.Exception.Message)"
         return @()
+    }
+}
+
+# Helper function to write alert annotations for commit type locations
+function Write-AlertAnnotation {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Error', 'Warning')]
+        [string]$Level,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [Parameter(Mandatory = $true)]
+        $Location,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AlertType
+    )
+
+    # Only write annotations for commit type locations
+    if ($AlertType -ne 'commit') {
+        return
+    }
+
+    if ($Level -eq 'Error') {
+        Write-ActionError -Message $Message -File $Location.details.path -Line $Location.details.start_line -Col $Location.details.start_column
+    }
+    else {
+        Write-ActionWarning -Message $Message -File $Location.details.path -Line $Location.details.start_line -Col $Location.details.start_column
     }
 }
 
@@ -449,8 +493,7 @@ foreach ($alert in $alerts) {
             'pull_request_comment' {
                 $prComments = Get-PullRequestComments -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber
                 # Extract comment ID from the URL (last segment of the path)
-                $uri = [uri]$location.details.pull_request_comment_url
-                $commentId = ($uri.AbsolutePath -split '/')[-1]
+                $commentId = Get-IdFromUrl -url $location.details.pull_request_comment_url
                 foreach ($comment in $prComments) {
                     if ($comment.id -eq $commentId) {
                         Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR comment."
@@ -474,7 +517,6 @@ foreach ($alert in $alerts) {
                     }
                 } else {
                     Write-ActionDebug "Skipping PR review URL comparison for alert $($alert.number): unexpected path format '$($reviewUri.AbsolutePath)'."
-                }
                 }
             }
             'pull_request_review_comment' {
@@ -528,18 +570,14 @@ foreach ($alert in $alertsInitiatedFromPr) {
         if ($FailOnAlert -and !$shouldBypass) {
             # Writes an Action Error to the message log and creates an annotation associated with the file and line/col number (only for commit type locations)
             #   -docs: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
-            if ($alertType -eq 'commit') {
-                Write-ActionError -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
-            }
+            Write-AlertAnnotation -Level 'Error' -Message $message -Location $location -AlertType $alertType
             $shouldFailAction = $true
             $passFail = '[🔴](# "Error")'
         }
         else {
             # Writes an Action Warning to the message log and creates an annotation associated with the file and line/col number (only for commit type locations)
             #   -docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
-            if ($alertType -eq 'commit') {
-                Write-ActionWarning -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
-            }
+            Write-AlertAnnotation -Level 'Warning' -Message $message -Location $location -AlertType $alertType
             $passFail = '[🟡](# "Warning")'
         }
 
