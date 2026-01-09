@@ -182,7 +182,8 @@ function Get-PullRequestHtmlUrl {
 function Get-AlertLocationWithLink {
     param(
         $location,
-        $prHtmlUrl
+        $prHtmlUrl,
+        $pullRequestNumber
     )
 
     if (-not $location.type) {
@@ -240,8 +241,7 @@ function Get-AlertLocationWithLink {
                 # Extract repo path: /repos/owner/repo/pulls/comments/12345 -> owner/repo
                 $owner = $pathSegments[2]
                 $repo = $pathSegments[3]
-                $prNumber = (Get-ActionRepo).PullRequest
-                $constructedUrl = "https://github.com/$owner/$repo/pull/$prNumber#discussion_r$commentId"
+                $constructedUrl = "https://github.com/$owner/$repo/pull/$pullRequestNumber#discussion_r$commentId"
                 return "[$locationType]($constructedUrl)"
             }
 
@@ -535,7 +535,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
         }
 
         # Build location value for the markdown table
-        $locationValue = Get-AlertLocationWithLink -location $location -prHtmlUrl $pr.html_url
+        $locationValue = Get-AlertLocationWithLink -location $location -prHtmlUrl $pr.html_url -pullRequestNumber $PullRequestNumber
 
         $markdownSummaryTableRows += "| $passFail | :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($null -eq $alert.resolution ? '❌' : $alert.resolution) | $($alert.push_protection_bypassed) | $locationValue | `n"
     }
