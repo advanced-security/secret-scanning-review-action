@@ -464,12 +464,17 @@ foreach ($alert in $alerts) {
                 # Example: https://api.github.com/repos/owner/repo/pulls/123/reviews/456 -> https://api.github.com/repos/owner/repo/pulls/123
                 $reviewUri = [uri]$location.details.pull_request_review_url
                 $pathSegments = $reviewUri.AbsolutePath.TrimEnd('/') -split '/'
-                # Keep all segments except the last 2 ("reviews" and "{review_id}")
-                $shortenedPath = ($pathSegments[0..($pathSegments.Length - 3)] -join '/')
-                $shortenedPrReviewUrl = "$($reviewUri.Scheme)://$($reviewUri.Host)$shortenedPath"
-                if ($shortenedPrReviewUrl -eq $pr.url) {
-                    Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review."
-                    $matchFound = $true
+                # Keep all segments except the last 2 ("reviews" and "{review_id}"), but only if there are enough segments
+                if ($pathSegments.Length -ge 3) {
+                    $shortenedPath = ($pathSegments[0..($pathSegments.Length - 3)] -join '/')
+                    $shortenedPrReviewUrl = "$($reviewUri.Scheme)://$($reviewUri.Host)$shortenedPath"
+                    if ($shortenedPrReviewUrl -eq $pr.url) {
+                        Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review."
+                        $matchFound = $true
+                    }
+                } else {
+                    Write-ActionDebug "Skipping PR review URL comparison for alert $($alert.number): unexpected path format '$($reviewUri.AbsolutePath)'."
+                }
                 }
             }
             'pull_request_review_comment' {
