@@ -229,6 +229,21 @@ function Get-AlertLocationWithLink {
             if ($htmlUrl) {
                 return "[$locationType]($htmlUrl)"
             }
+
+            # Fallback for pending review comments (API returns 404 but we can construct the URL)
+            # Extract comment ID from URL: .../pulls/comments/12345 -> 12345
+            if ($location.details.pull_request_review_comment_url) {
+                $uri = [uri]$location.details.pull_request_review_comment_url
+                $commentId = ($uri.AbsolutePath -split '/')[-1]
+                $pathSegments = $uri.AbsolutePath -split '/'
+                # Extract repo path: /repos/owner/repo/pulls/comments/12345 -> owner/repo
+                $owner = $pathSegments[2]
+                $repo = $pathSegments[3]
+                $prNumber = (Get-ActionRepo).PullRequest
+                $constructedUrl = "https://github.com/$owner/$repo/pull/$prNumber#discussion_r$commentId"
+                return "[$locationType]($constructedUrl)"
+            }
+
             return $locationType
         }
         default {
@@ -266,28 +281,6 @@ function Get-PullRequestComments {
     catch {
         Write-ActionDebug "Error getting PR comments: $($_.Exception.Message)"
         return @()
-    }
-}
-
-# Helper function to get a specific PR review comment
-function Get-PullRequestReviewComment {
-    param(
-        [string]$reviewCommentUrl
-    )
-
-    try {
-        $uri = [uri]$reviewCommentUrl
-        # Use Invoke-GHRestMethod to ensure we get the raw API response with all fields including pull_request_url
-        $reviewComment = Invoke-GHRestMethod -Method GET -Uri $uri.AbsolutePath
-
-        # Debug: Output the properties we got back
-        Write-ActionDebug "Review comment properties: $($reviewComment.PSObject.Properties.Name -join ', ')"
-
-        return $reviewComment
-    }
-    catch {
-        Write-ActionDebug "Error getting PR review comment: $($_.Exception.Message)"
-        return $null
     }
 }
 
@@ -475,37 +468,12 @@ foreach ($alert in $alerts) {
                 }
             }
             'pull_request_review_comment' {
-                # For review comments, we can extract the PR number from the comment URL itself
-                # Example URL: https://api.github.com/repos/owner/repo/pulls/comments/123456
-                # The review comment endpoint doesn't directly tell us which PR, but we can fetch it and check
-                $prReviewComment = Get-PullRequestReviewComment -reviewCommentUrl $location.details.pull_request_review_comment_url
-                Write-ActionDebug "Checking PR review comment for alert $($alert.number)..."
-                Write-ActionDebug "  Review comment URL: $($location.details.pull_request_review_comment_url)"
-                Write-ActionDebug "  Review comment retrieved: $($null -ne $prReviewComment)"
-                if ($prReviewComment) {
-                    # Try different property name variations (PowerShellForGitHub may convert property names)
-                    $reviewPrUrl = $prReviewComment.pull_request_url
-                    if (-not $reviewPrUrl) {
-                        $reviewPrUrl = $prReviewComment.PullRequestUrl
-                    }
-                    if (-not $reviewPrUrl) {
-                        # If the property doesn't exist, try accessing it as a hashtable key
-                        if ($prReviewComment -is [hashtable] -or $prReviewComment -is [System.Collections.IDictionary]) {
-                            $reviewPrUrl = $prReviewComment['pull_request_url']
-                        }
-                    }
-                    if (-not $reviewPrUrl -and $prReviewComment.PSObject.Properties['pull_request_url']) {
-                        $reviewPrUrl = $prReviewComment.PSObject.Properties['pull_request_url'].Value
-                    }
-
-                    Write-ActionDebug "  Review comment PR URL: $reviewPrUrl"
-                    Write-ActionDebug "  Current PR URL: $($pr.url)"
-                    Write-ActionDebug "  URLs match: $($reviewPrUrl -eq $pr.url)"
-
-                    if ($reviewPrUrl -and ($reviewPrUrl -eq $pr.url)) {
-                        Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review comment."
-                        $matchFound = $true
-                    }
+                # Note: Pending review comments are not accessible via the API (return 404)
+                # but are still detected by secret scanning. We trust the alert's location data.
+                # The comment may also have been deleted after the secret was detected.
+                if ($location.details.pull_request_review_comment_url) {
+                    Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review comment."
+                    $matchFound = $true
                 }
             }
         }
