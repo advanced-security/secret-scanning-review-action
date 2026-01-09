@@ -234,7 +234,6 @@ function Get-AlertLocationWithLink {
             # If we reach here, $htmlUrl is null (API call failed, likely 404 for pending/deleted review comment)
             # Fallback: manually construct the GitHub URL from the comment ID
             if ($location.details.pull_request_review_comment_url) {
-                Write-ActionDebug "API call failed for $($location.details.pull_request_review_comment_url), constructing URL from comment ID"
                 $uri = [uri]$location.details.pull_request_review_comment_url
                 $commentId = ($uri.AbsolutePath -split '/')[-1]
                 $pathSegments = $uri.AbsolutePath -split '/'
