@@ -42,6 +42,10 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         If provided, will disable the PR comment feature.
         Default is false.
 
+.PARAMETER DisableWorkflowSummary
+        If provided, will disable the workflow summary markdown table output.
+        Default is false.
+
 .NOTES
 Features
     - Actions compatible
