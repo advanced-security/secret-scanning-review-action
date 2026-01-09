@@ -289,7 +289,7 @@ function Get-PullRequestComments {
     }
 }
 
-#Init Owner/Repo/PR variables+
+#Init Owner/Repo/PR variables
 $actionRepo = Get-ActionRepo
 $OrganizationName = $actionRepo.Owner
 $RepositoryName = $actionRepo.Repo
