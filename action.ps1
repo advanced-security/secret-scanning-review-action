@@ -127,31 +127,31 @@ $GitHubToken = $secureString = $cred = $null # clear this out now that it's no l
 # Helper function to get alert location type description
 function Get-AlertLocationType {
     param($location)
-    
+
     if (-not $location.type) {
         throw "Alert location does not have a 'type' field."
     }
-    
+
     switch ($location.type) {
-        'commit' { 
+        'commit' {
             return "Commit SHA $($location.details.commit_sha)"
         }
-        'pull_request_title' { 
+        'pull_request_title' {
             return "Pull request title"
         }
-        'pull_request_body' { 
+        'pull_request_body' {
             return "Pull request body"
         }
-        'pull_request_comment' { 
+        'pull_request_comment' {
             return "Pull request comment"
         }
-        'pull_request_review' { 
+        'pull_request_review' {
             return "Pull request review"
         }
-        'pull_request_review_comment' { 
+        'pull_request_review_comment' {
             return "Pull request review comment"
         }
-        default { 
+        default {
             return $null
         }
     }
@@ -164,17 +164,17 @@ function Get-PullRequestComments {
         [string]$repo,
         [int]$pullNumber
     )
-    
+
     $allComments = @()
     $perPage = 100
     $page = 1
     $commentUrl = "/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
-    
+
     try {
         while ($true) {
             $comments = Invoke-GHRestMethod -Method GET -Uri $commentUrl
             $allComments += $comments
-            
+
             if ($comments.Count -lt $perPage) {
                 break
             }
@@ -194,7 +194,7 @@ function Get-PullRequestReviewComment {
     param(
         [string]$reviewCommentUrl
     )
-    
+
     try {
         $uri = [uri]$reviewCommentUrl
         $reviewComment = Invoke-GHRestMethod -Method GET -Uri $uri.AbsolutePath
@@ -338,7 +338,7 @@ foreach ($alert in $alerts) {
     $locationMatches = @()
     foreach ($location in $locations) {
         $matchFound = $false
-        
+
         # Check different location types
         switch ($location.type) {
             'commit' {
@@ -394,7 +394,7 @@ foreach ($alert in $alerts) {
                 }
             }
         }
-        
+
         if ($matchFound) {
             $locationMatches += $location
         }
@@ -452,7 +452,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
 
         # Build location value for the markdown table
         if ($alertType -eq 'commit') {
-            $commitSha = $location.details.commit_sha.SubString(0,7)
+            $commitSha = $location.details.commit_sha.SubString(0, 7)
             $locationValue = "[$commitSha]($($pr.html_url)/commits/$($location.details.commit_sha))"
         }
         else {
@@ -532,13 +532,13 @@ else {
 $stepOutput = @()
 foreach ($alert in $alertsInitiatedFromPr) {
     $stepOutput += @{
-        number = $alert.number
-        secret_type = $alert.secret_type
-        push_protection_bypassed = $alert.push_protection_bypassed
+        number                      = $alert.number
+        secret_type                 = $alert.secret_type
+        push_protection_bypassed    = $alert.push_protection_bypassed
         push_protection_bypassed_by = $alert.push_protection_bypassed_by
-        state = $alert.state
-        resolution = $alert.resolution
-        html_url = $alert.html_url
+        state                       = $alert.state
+        resolution                  = $alert.resolution
+        html_url                    = $alert.html_url
     }
 }
 
