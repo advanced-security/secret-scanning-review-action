@@ -309,6 +309,9 @@ Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryNa
 #>
 try {
     $pr = Get-GitHubPullRequest -PullRequest $PullRequestNumber
+    # Get the API url for comparison purposes (PowerShellForGitHub module may not return the 'url' field)
+    # Construct it from the org/repo/pr number
+    $pr | Add-Member -MemberType NoteProperty -Name 'url' -Value "https://api.github.com/repos/$OrganizationName/$RepositoryName/pulls/$PullRequestNumber" -Force
 }
 catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
@@ -468,6 +471,14 @@ foreach ($alert in $alerts) {
             }
             'pull_request_review_comment' {
                 $prReviewComment = Get-PullRequestReviewComment -reviewCommentUrl $location.details.pull_request_review_comment_url
+                Write-ActionDebug "Checking PR review comment for alert $($alert.number)..."
+                Write-ActionDebug "  Review comment URL: $($location.details.pull_request_review_comment_url)"
+                Write-ActionDebug "  Review comment retrieved: $($null -ne $prReviewComment)"
+                if ($prReviewComment) {
+                    Write-ActionDebug "  Review comment PR URL: $($prReviewComment.pull_request_url)"
+                    Write-ActionDebug "  Current PR URL: $($pr.url)"
+                    Write-ActionDebug "  URLs match: $($prReviewComment.pull_request_url -eq $pr.url)"
+                }
                 if ($prReviewComment -and $prReviewComment.pull_request_url -eq $pr.url) {
                     Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review comment."
                     $matchFound = $true
