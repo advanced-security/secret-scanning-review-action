@@ -171,8 +171,11 @@ NOTE:
 > [!WARNING]
 > Disabling SSL verification is NOT recommended for production environments. This option is provided for testing purposes only.
 
+### `skip-closed-alerts`
+**OPTIONAL** If provided, will only process open alerts (applies to both powershell and python runtimes). Default `'false'`.
+
 ### `python-skip-closed-alerts`
-**OPTIONAL** If provided, will only process open alerts. Default `'false'`.
+**OPTIONAL** [DEPRECATED - Use `skip-closed-alerts` instead] If provided, will only process open alerts. Default `'false'`.
 
 ### `python-disable-workflow-summary`
 **OPTIONAL** If provided, will not put a summary of detected secrets in the workflow run summary. Default `'false'`.
@@ -283,4 +286,6 @@ sequenceDiagram
 ### Why are there two runtime options and what's the difference?
 The primary difference is the underlying language and the dependencies that are required to be installed on the runner.  The `powershell` runtime is the default and is the most tested.  The `python` runtime is a newer addition for those who may not have powershell installed on their self-hosted runners.
 
-The `python` runtime also includes some additional configuration options that are not available in the `powershell` runtime, and looks beyond just the pull request commits for secrets that were introduced in the pull request title, description, comments, review, and review comments.
+The `python` runtime includes some additional configuration options for enterprise environments:
+- **Proxy support**: Configure HTTP/HTTPS proxy settings for on-premises or corporate network environments (`python-http-proxy-url` and `python-https-proxy-url`)
+- **SSL verification control**: Disable SSL verification for testing environments (`python-verify-ssl`)

@@ -46,6 +46,10 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         If provided, will disable the workflow summary markdown table output.
         Default is false.
 
+.PARAMETER SkipClosedAlerts
+        If provided, will only process open alerts (skips closed/resolved alerts).
+        Default is false.
+
 .NOTES
 Features
     - Actions compatible
@@ -74,7 +78,8 @@ param(
     [bool]$FailOnAlert,
     [bool]$FailOnAlertExcludeClosed,
     [bool]$DisablePRComment,
-    [bool]$DisableWorkflowSummary
+    [bool]$DisableWorkflowSummary,
+    [bool]$SkipClosedAlerts
 )
 
 # List of supported generic secret types as per:
@@ -304,8 +309,11 @@ function Get-PullRequestComments {
 }
 
 # Helper function to write alert annotations for commit type locations
+# Writes an Action Warning/Error to the message log and creates an annotation associated with the file and line/col number (only for commit type locations)
 function Write-AlertAnnotation {
     param(
+        # Error docs: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
+        # Warning docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
         [Parameter(Mandatory = $true)]
         [ValidateSet('Error', 'Warning')]
         [string]$Level,
@@ -397,6 +405,9 @@ $perPage = 100
 
 # First call: Get default provider-based secret scanning alerts
 $repoAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage"
+if ($SkipClosedAlerts) {
+    $repoAlertsUrl += "&state=open"
+}
 try {
     $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl -ExtendedResult $true
     $alerts = [System.Collections.ArrayList]@($alertsResponse.result)
@@ -413,6 +424,9 @@ catch {
 
 # Second call: Get generic secret scanning alerts (non-provider patterns and copilot patterns)
 $genericAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage&secret_type=$GENERIC_SECRET_TYPES"
+if ($SkipClosedAlerts) {
+    $genericAlertsUrl += "&state=open"
+}
 try {
     $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsUrl -ExtendedResult $true
     $genericAlerts = [System.Collections.ArrayList]@($genericAlertsResponse.result)
@@ -568,15 +582,11 @@ foreach ($alert in $alertsInitiatedFromPr) {
         $shouldBypass = ($alert.state -eq 'resolved') -and $FailOnAlertExcludeClosed
 
         if ($FailOnAlert -and !$shouldBypass) {
-            # Writes an Action Error to the message log and creates an annotation associated with the file and line/col number (only for commit type locations)
-            #   -docs: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
             Write-AlertAnnotation -Level 'Error' -Message $message -Location $location -AlertType $alertType
             $shouldFailAction = $true
             $passFail = '[🔴](# "Error")'
         }
         else {
-            # Writes an Action Warning to the message log and creates an annotation associated with the file and line/col number (only for commit type locations)
-            #   -docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
             Write-AlertAnnotation -Level 'Warning' -Message $message -Location $location -AlertType $alertType
             $passFail = '[🟡](# "Warning")'
         }
