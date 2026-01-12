@@ -49,10 +49,6 @@ inputs:
     description: '[DEPRECATED - Use disable-workflow-summary instead] A boolean to disable the workflow summary comment (python runtime only).'
     required: false
     default: 'false'
-  powershell-disable-workflow-summary:
-    description: '[DEPRECATED - Use disable-workflow-summary instead] A boolean to disable the workflow summary comment (powershell runtime only).'
-    required: false
-    default: 'false'
 outputs:
   alerts:
     description: 'Details about the alerts detected in the PR.'
@@ -60,10 +56,18 @@ outputs:
 runs:
     using: composite
     steps:
+      - name: Warn on deprecated python-skip-closed-alerts
+        if: ${{ inputs.python-skip-closed-alerts == 'true' }}
+        run: echo "::warning::The 'python-skip-closed-alerts' input is deprecated and will be removed in v3. Please use 'skip-closed-alerts' instead."
+        shell: bash
+      - name: Warn on deprecated python-disable-workflow-summary
+        if: ${{ inputs.python-disable-workflow-summary == 'true' }}
+        run: echo "::warning::The 'python-disable-workflow-summary' input is deprecated and will be removed in v3. Please use 'disable-workflow-summary' instead."
+        shell: bash
       - name: Run Powershell Script
         if: ${{ inputs.runtime == 'powershell' }}
         id: powershell-run
-        run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }} -DisableWorkflowSummary $${{ inputs.disable-workflow-summary || inputs.powershell-disable-workflow-summary }} -SkipClosedAlerts $${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
+        run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }} -DisableWorkflowSummary $${{ inputs.disable-workflow-summary }} -SkipClosedAlerts $${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
         shell: pwsh
       - name: Run Python Script
         if: ${{ inputs.runtime == 'python' }}
