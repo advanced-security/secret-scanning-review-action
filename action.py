@@ -447,7 +447,9 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                 location_value = alert_location
             
             # Format validity with checked date if available
-            validity_value = '❌' if alert.get('validity') is None else alert['validity']
+            validity_value = alert.get('validity')
+            if validity_value is None:
+                validity_value = '❌'
             if alert.get('validity_checked_at'):
                 validity_value += f" ({alert['validity_checked_at']})"
             
