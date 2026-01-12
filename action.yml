@@ -33,31 +33,48 @@ inputs:
     description: 'A boolean to enable or disable SSL verification for GitHub API requests (python runtime only). NOTE: This is NOT recommended and may introduce additional security risks.'
     required: false
     default: 'true'
+  skip-closed-alerts:
+    description: 'A boolean to enable or disable skipping closed alerts from evaluation.'
+    required: false
+    default: 'false'
   python-skip-closed-alerts:
-    description: 'A boolean to enable or disable skipping closed alerts from evaluation (python runtime only).'
+    description: '[DEPRECATED - Use skip-closed-alerts instead] A boolean to enable or disable skipping closed alerts from evaluation (python runtime only).'
+    required: false
+    default: 'false'
+  disable-workflow-summary:
+    description: 'A boolean to disable the workflow summary comment.'
     required: false
     default: 'false'
   python-disable-workflow-summary:
-    description: 'A boolean to disable the workflow summary comment (python runtime only).'
+    description: '[DEPRECATED - Use disable-workflow-summary instead] A boolean to disable the workflow summary comment (python runtime only).'
     required: false
     default: 'false'
 outputs:
   alerts:
     description: 'Details about the alerts detected in the PR.'
-    value: ${{ steps.python-run.outputs.alerts}}
+    value: ${{ steps.python-run.outputs.alerts || steps.powershell-run.outputs.alerts }}
 runs:
     using: composite
     steps:
+      - name: Warn on deprecated python-skip-closed-alerts
+        if: ${{ inputs.python-skip-closed-alerts == 'true' }}
+        run: echo "::warning::The 'python-skip-closed-alerts' input is deprecated and will be removed in v3. Please use 'skip-closed-alerts' instead."
+        shell: bash
+      - name: Warn on deprecated python-disable-workflow-summary
+        if: ${{ inputs.python-disable-workflow-summary == 'true' }}
+        run: echo "::warning::The 'python-disable-workflow-summary' input is deprecated and will be removed in v3. Please use 'disable-workflow-summary' instead."
+        shell: bash
       - name: Run Powershell Script
         if: ${{ inputs.runtime == 'powershell' }}
-        run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }}
+        id: powershell-run
+        run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }} -DisableWorkflowSummary $${{ inputs.disable-workflow-summary }} -SkipClosedAlerts $${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
         shell: pwsh
       - name: Run Python Script
         if: ${{ inputs.runtime == 'python' }}
         id: python-run
         run: |
           pip install -r ${{ github.action_path }}/requirements.txt
-          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }} --SkipClosedAlerts ${{ inputs.python-skip-closed-alerts }} --DisableWorkflowSummary ${{ inputs.python-disable-workflow-summary }}
+          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }} --SkipClosedAlerts ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }} --DisableWorkflowSummary ${{ inputs.disable-workflow-summary || inputs.python-disable-workflow-summary }}
         shell: bash
 branding:
   icon: "lock"

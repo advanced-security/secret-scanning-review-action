@@ -42,6 +42,14 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         If provided, will disable the PR comment feature.
         Default is false.
 
+.PARAMETER DisableWorkflowSummary
+        If provided, will disable the workflow summary markdown table output.
+        Default is false.
+
+.PARAMETER SkipClosedAlerts
+        If provided, will only process open alerts (skips closed/resolved alerts).
+        Default is false.
+
 .NOTES
 Features
     - Actions compatible
@@ -69,7 +77,9 @@ param(
     [string]$GitHubToken,
     [bool]$FailOnAlert,
     [bool]$FailOnAlertExcludeClosed,
-    [bool]$DisablePRComment
+    [bool]$DisablePRComment,
+    [bool]$DisableWorkflowSummary,
+    [bool]$SkipClosedAlerts
 )
 
 # List of supported generic secret types as per:
@@ -123,7 +133,215 @@ $cred = New-Object System.Management.Automation.PSCredential "username is ignore
 Set-GitHubAuthentication -Credential $cred
 $GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
-#Init Owner/Repo/PR variables+
+# Helper function to extract ID from URL path
+function Get-IdFromUrl {
+    param(
+        [string]$url
+    )
+
+    if (-not $url) {
+        return $null
+    }
+
+    $uri = [uri]$url
+    return ($uri.AbsolutePath -split '/')[-1]
+}
+
+# Helper function to get alert location type description
+function Get-AlertLocationType {
+    param($location)
+
+    if (-not $location.type) {
+        throw "Alert location does not have a 'type' field."
+    }
+
+    switch ($location.type) {
+        'commit' {
+            return "Commit SHA $($location.details.commit_sha)"
+        }
+        'pull_request_title' {
+            return "Pull request title"
+        }
+        'pull_request_body' {
+            return "Pull request body"
+        }
+        'pull_request_comment' {
+            return "Pull request comment"
+        }
+        'pull_request_review' {
+            return "Pull request review"
+        }
+        'pull_request_review_comment' {
+            return "Pull request review comment"
+        }
+        default {
+            return $null
+        }
+    }
+}
+
+# Helper function to get html_url for PR-related locations
+function Get-PullRequestHtmlUrl {
+    param(
+        [string]$apiUrl
+    )
+
+    if (-not $apiUrl) {
+        return $null
+    }
+
+    try {
+        $uri = [uri]$apiUrl
+        $response = Invoke-GHRestMethod -Method GET -Uri $uri.AbsolutePath
+        return $response.html_url
+    }
+    catch {
+        # Silently return null for pending/deleted review comments (404 expected)
+        return $null
+    }
+}
+
+# Helper function to get alert location with hyperlink
+function Get-AlertLocationWithLink {
+    param(
+        $location,
+        $prHtmlUrl,
+        $pullRequestNumber
+    )
+
+    if (-not $location.type) {
+        throw "Alert location does not have a 'type' field."
+    }
+
+    $locationType = Get-AlertLocationType -location $location
+
+    switch ($location.type) {
+        'commit' {
+            $commitSha = $location.details.commit_sha.SubString(0, 7)
+            return "[$commitSha]($prHtmlUrl/commits/$($location.details.commit_sha))"
+        }
+        'pull_request_title' {
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_title_url
+            if ($htmlUrl) {
+                return "[$locationType]($htmlUrl)"
+            }
+            return $locationType
+        }
+        'pull_request_body' {
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_body_url
+            if ($htmlUrl) {
+                return "[$locationType]($htmlUrl)"
+            }
+            return $locationType
+        }
+        'pull_request_comment' {
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_comment_url
+            if ($htmlUrl) {
+                return "[$locationType]($htmlUrl)"
+            }
+            return $locationType
+        }
+        'pull_request_review' {
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_review_url
+            if ($htmlUrl) {
+                return "[$locationType]($htmlUrl)"
+            }
+            return $locationType
+        }
+        'pull_request_review_comment' {
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_review_comment_url
+            if ($htmlUrl) {
+                # API call succeeded - use the html_url from the response
+                return "[$locationType]($htmlUrl)"
+            }
+
+            # If we reach here, $htmlUrl is null (API call failed, likely 404 for pending/deleted review comment)
+            # Fallback: manually construct the GitHub URL from the comment ID
+            if ($location.details.pull_request_review_comment_url) {
+                $commentId = Get-IdFromUrl -url $location.details.pull_request_review_comment_url
+                $uri = [uri]$location.details.pull_request_review_comment_url
+                $pathSegments = $uri.AbsolutePath -split '/'
+                # Extract repo path: /repos/owner/repo/pulls/comments/12345 -> owner/repo
+                $owner = $pathSegments[2]
+                $repo = $pathSegments[3]
+                $constructedUrl = "https://github.com/$owner/$repo/pull/$pullRequestNumber#discussion_r$commentId"
+                return "[$locationType]($constructedUrl)"
+            }
+
+            return $locationType
+        }
+        default {
+            return $locationType
+        }
+    }
+}
+
+# Helper function to get PR comments
+function Get-PullRequestComments {
+    param(
+        [string]$owner,
+        [string]$repo,
+        [int]$pullNumber
+    )
+
+    $allComments = @()
+    $perPage = 100
+    $page = 1
+    $commentUrl = "/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
+
+    try {
+        while ($true) {
+            $comments = Invoke-GHRestMethod -Method GET -Uri $commentUrl
+            $allComments += $comments
+
+            if ($comments.Count -lt $perPage) {
+                break
+            }
+            $page++
+            $commentUrl = "/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
+        }
+        return $allComments
+    }
+    catch {
+        Write-ActionDebug "Error getting PR comments: $($_.Exception.Message)"
+        return @()
+    }
+}
+
+# Helper function to write alert annotations for commit type locations
+# Writes an Action Warning/Error to the message log and creates an annotation associated with the file and line/col number (only for commit type locations)
+function Write-AlertAnnotation {
+    param(
+        # Error docs: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
+        # Warning docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Error', 'Warning')]
+        [string]$Level,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+
+        [Parameter(Mandatory = $true)]
+        $Location,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AlertType
+    )
+
+    # Only write annotations for commit type locations
+    if ($AlertType -ne 'commit') {
+        return
+    }
+
+    if ($Level -eq 'Error') {
+        Write-ActionError -Message $Message -File $Location.details.path -Line $Location.details.start_line -Col $Location.details.start_column
+    }
+    else {
+        Write-ActionWarning -Message $Message -File $Location.details.path -Line $Location.details.start_line -Col $Location.details.start_column
+    }
+}
+
+#Init Owner/Repo/PR variables
 $actionRepo = Get-ActionRepo
 $OrganizationName = $actionRepo.Owner
 $RepositoryName = $actionRepo.Repo
@@ -146,6 +364,9 @@ Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryNa
 #>
 try {
     $pr = Get-GitHubPullRequest -PullRequest $PullRequestNumber
+    # Get the API url for comparison purposes (PowerShellForGitHub module may not return the 'url' field)
+    # Construct it from the org/repo/pr number
+    $pr | Add-Member -MemberType NoteProperty -Name 'url' -Value "https://api.github.com/repos/$OrganizationName/$RepositoryName/pulls/$PullRequestNumber" -Force
 }
 catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
@@ -184,6 +405,9 @@ $perPage = 100
 
 # First call: Get default provider-based secret scanning alerts
 $repoAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage"
+if ($SkipClosedAlerts) {
+    $repoAlertsUrl += "&state=open"
+}
 try {
     $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl -ExtendedResult $true
     $alerts = [System.Collections.ArrayList]@($alertsResponse.result)
@@ -200,6 +424,9 @@ catch {
 
 # Second call: Get generic secret scanning alerts (non-provider patterns and copilot patterns)
 $genericAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage&secret_type=$GENERIC_SECRET_TYPES"
+if ($SkipClosedAlerts) {
+    $genericAlertsUrl += "&state=open"
+}
 try {
     $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsUrl -ExtendedResult $true
     $genericAlerts = [System.Collections.ArrayList]@($genericAlertsResponse.result)
@@ -254,15 +481,71 @@ foreach ($alert in $alerts) {
 
     $locationMatches = @()
     foreach ($location in $locations) {
-        $alertInitialCommitSha = $location.details.commit_sha
+        $matchFound = $false
 
-        #if alertInitialCommitSha in list of commit shas, then add location to list to further add to the alert list
-        if ($alertInitialCommitSha -in $prCommitShaList) {
-            Write-ActionDebug "YES! Found a repo secret scanning alert (# $($alert.number)) on initial commit sha: $alertInitialCommitSha that originated from a PR#$PullRequestNumber commit"
-            $locationMatches += $location
+        # Check different location types
+        switch ($location.type) {
+            'commit' {
+                $alertInitialCommitSha = $location.details.commit_sha
+                if ($alertInitialCommitSha -in $prCommitShaList) {
+                    Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a commit in the PR."
+                    $matchFound = $true
+                }
+            }
+            'pull_request_title' {
+                if ($location.details.pull_request_title_url -eq $pr.url) {
+                    Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in the PR title."
+                    $matchFound = $true
+                }
+            }
+            'pull_request_body' {
+                if ($location.details.pull_request_body_url -eq $pr.url) {
+                    Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in the PR body."
+                    $matchFound = $true
+                }
+            }
+            'pull_request_comment' {
+                $prComments = Get-PullRequestComments -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber
+                # Extract comment ID from the URL (last segment of the path)
+                $commentId = Get-IdFromUrl -url $location.details.pull_request_comment_url
+                foreach ($comment in $prComments) {
+                    if ($comment.id -eq $commentId) {
+                        Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR comment."
+                        $matchFound = $true
+                        break
+                    }
+                }
+            }
+            'pull_request_review' {
+                # Remove '/reviews/{review_id}' from the end of the pull_request_review_url to compare against the PR URL
+                # Example: https://api.github.com/repos/owner/repo/pulls/123/reviews/456 -> https://api.github.com/repos/owner/repo/pulls/123
+                $reviewUri = [uri]$location.details.pull_request_review_url
+                $pathSegments = $reviewUri.AbsolutePath.TrimEnd('/') -split '/'
+                # Keep all segments except the last 2 ("reviews" and "{review_id}"), but only if there are enough segments
+                if ($pathSegments.Length -ge 3) {
+                    $shortenedPath = ($pathSegments[0..($pathSegments.Length - 3)] -join '/')
+                    $shortenedPrReviewUrl = "$($reviewUri.Scheme)://$($reviewUri.Host)$shortenedPath"
+                    if ($shortenedPrReviewUrl -eq $pr.url) {
+                        Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review."
+                        $matchFound = $true
+                    }
+                } else {
+                    Write-ActionDebug "Skipping PR review URL comparison for alert $($alert.number): unexpected path format '$($reviewUri.AbsolutePath)'."
+                }
+            }
+            'pull_request_review_comment' {
+                # Note: Pending review comments are not accessible via the API (return 404)
+                # but are still detected by secret scanning. We trust the alert's location data.
+                # The comment may also have been deleted after the secret was detected.
+                if ($location.details.pull_request_review_comment_url) {
+                    Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review comment."
+                    $matchFound = $true
+                }
+            }
         }
-        else {
-            Write-ActionDebug "NO! Did not find a repo secret scanning alert (# $($alert.number)) on initial commit sha: $alertInitialCommitSha that originated from a PR#$PullRequestNumber commit"
+
+        if ($matchFound) {
+            $locationMatches += $location
         }
     }
 
@@ -293,29 +576,30 @@ foreach ($alert in $alertsInitiatedFromPr) {
     $numSecretsAlertsDetected++
     foreach ($location in $alert.locations) {
         $numSecretsAlertLocationsDetected++
-        $message = "A $($alert.state -eq 'resolved' ? "Closed as '$($alert.resolution)'" : 'New') Secret Detected in Pull Request #$PullRequestNumber Commit SHA:$($location.details.commit_sha.SubString(0,7)). '$($alert.secret_type_display_name)' Secret: $($alert.html_url) Commit: $($pr.html_url)/commits/$($location.details.commit_sha)"
+        $alertType = $location.type
+        $alertLocation = Get-AlertLocationType -location $location
+        $message = "A $($alert.state -eq 'resolved' ? "Closed as '$($alert.resolution)'" : 'New') Secret Detected in Pull Request #$PullRequestNumber. '$($alert.secret_type_display_name)' Secret: $($alert.html_url) Location: $alertLocation"
         $shouldBypass = ($alert.state -eq 'resolved') -and $FailOnAlertExcludeClosed
 
         if ($FailOnAlert -and !$shouldBypass) {
-            # Writes an Action Error to the message log and creates an annotation associated with the file and line/col number. (# TODO - no support for ?Title? .. send PR to maintainer!)
-            #   -docs: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
-            Write-ActionError -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
+            Write-AlertAnnotation -Level 'Error' -Message $message -Location $location -AlertType $alertType
             $shouldFailAction = $true
             $passFail = '[🔴](# "Error")'
         }
         else {
-            # Writes an Action Warning to the message log and creates an annotation associated with the file and line/col number. (# TODO - no support for ?Title? .. send PR to maintainer!)
-            #   -docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
-            Write-ActionWarning -Message $message -File $location.details.path -Line $location.details.start_line -Col $location.details.start_column
+            Write-AlertAnnotation -Level 'Warning' -Message $message -Location $location -AlertType $alertType
             $passFail = '[🟡](# "Warning")'
         }
 
-        $markdownSummaryTableRows += "| $passFail | :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($null -eq $alert.resolution ? '❌' : $alert.resolution) | $($alert.push_protection_bypassed) | [$($location.details.commit_sha.SubString(0,7))]($($pr.html_url)/commits/$($location.details.commit_sha)) | `n"
+        # Build location value for the markdown table
+        $locationValue = Get-AlertLocationWithLink -location $location -prHtmlUrl $pr.html_url -pullRequestNumber $PullRequestNumber
+
+        $markdownSummaryTableRows += "| $passFail | :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($null -eq $alert.resolution ? '❌' : $alert.resolution) | $($alert.push_protection_bypassed) | $locationValue | `n"
     }
 }
 
 # One line summary of alerts found
-$summary = "$($numSecretsAlertsDetected -gt 0 ? '🚨' : '👍') Found [$numSecretsAlertsDetected] secret scanning alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from a PR#$PullRequestNumber commit"
+$summary = "$($numSecretsAlertsDetected -gt 0 ? '🚨' : '👍') Found [$numSecretsAlertsDetected] secret scanning alert$($numSecretsAlertsDetected -eq 1 ? '' : 's') across [$numSecretsAlertLocationsDetected] location$($numSecretsAlertLocationsDetected -eq 1 ? '' : 's') that originated from PR#$PullRequestNumber"
 
 #Actions Markdown Summary - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary
 #flashy! - https://github.blog/2022-05-09-supercharging-github-actions-with-job-summaries/
@@ -325,7 +609,7 @@ $markdownSummary = "# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET S
 if ($alertsInitiatedFromPr.Count -gt 0) {
 
     $markdownSummary += @"
-| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Commit #️⃣ |
+| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Location #️⃣ |
 | --- | --- | --- | --- | --- | --- | --- |`n
 "@
 
@@ -368,11 +652,44 @@ else {
     Write-ActionDebug "Skipping PR comment update - DisablePRComment is set to $DisablePRComment and alertsInitiatedFromPr is $($alertsInitiatedFromPr.Count)"
 }
 
-#Output Step Summary - To the GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
-$markdownSummary > $env:GITHUB_STEP_SUMMARY
-#Get-Item -Path $env:GITHUB_STEP_SUMMARY | Show-Markdown
-Write-ActionDebug "Markdown Summary from env var GITHUB_STEP_SUMMARY: '$env:GITHUB_STEP_SUMMARY' "
-Write-ActionDebug $(Get-Content $env:GITHUB_STEP_SUMMARY)
+# Output Step Summary - To the GITHUB_STEP_SUMMARY environment file. GITHUB_STEP_SUMMARY is unique for each step in a job
+if ($DisableWorkflowSummary) {
+    Write-ActionDebug "Skipping workflow summary - DisableWorkflowSummary is set to $DisableWorkflowSummary"
+}
+else {
+    $markdownSummary > $env:GITHUB_STEP_SUMMARY
+    #Get-Item -Path $env:GITHUB_STEP_SUMMARY | Show-Markdown
+    Write-ActionDebug "Markdown Summary from env var GITHUB_STEP_SUMMARY: '$env:GITHUB_STEP_SUMMARY' "
+    Write-ActionDebug $(Get-Content $env:GITHUB_STEP_SUMMARY)
+}
+
+# Create step output JSON with alert metadata
+$stepOutput = @()
+foreach ($alert in $alertsInitiatedFromPr) {
+    $stepOutput += @{
+        number                      = $alert.number
+        secret_type                 = $alert.secret_type
+        push_protection_bypassed    = $alert.push_protection_bypassed
+        push_protection_bypassed_by = $alert.push_protection_bypassed_by
+        state                       = $alert.state
+        resolution                  = $alert.resolution
+        html_url                    = $alert.html_url
+    }
+}
+
+# Convert step output to JSON (Depth 3 is sufficient for the nested structure: array of objects with possible nested objects)
+$stepOutputJson = $stepOutput | ConvertTo-Json -Compress -Depth 3
+
+# Write step output to GITHUB_OUTPUT environment file
+if ($env:GITHUB_OUTPUT) {
+    try {
+        Add-Content -Path $env:GITHUB_OUTPUT -Value "alerts=$stepOutputJson"
+        Write-ActionDebug "Step output written to GITHUB_OUTPUT: $stepOutputJson"
+    }
+    catch {
+        Write-ActionWarning "Failed to write step output to GITHUB_OUTPUT: $($_.Exception.Message)"
+    }
+}
 
 #Output Message Summary and set exit code
 # -  any error alerts were found in FailOnAlert mode (observing FailOnAlertExcludeClosed), exit with error code 1
