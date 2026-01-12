@@ -594,7 +594,13 @@ foreach ($alert in $alertsInitiatedFromPr) {
         # Build location value for the markdown table
         $locationValue = Get-AlertLocationWithLink -location $location -prHtmlUrl $pr.html_url -pullRequestNumber $PullRequestNumber
 
-        $markdownSummaryTableRows += "| $passFail | :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($null -eq $alert.resolution ? '❌' : $alert.resolution) | $($alert.push_protection_bypassed) | $locationValue | `n"
+        # Format validity with checked date if available
+        $validityValue = $null -eq $alert.validity ? '❌' : $alert.validity
+        if ($alert.validity_checked_at) {
+            $validityValue += " ($($alert.validity_checked_at))"
+        }
+
+        $markdownSummaryTableRows += "| $passFail | :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($null -eq $alert.resolution ? '❌' : $alert.resolution) | $($alert.push_protection_bypassed) | $validityValue | $locationValue | `n"
     }
 }
 
@@ -609,8 +615,8 @@ $markdownSummary = "# :unlock: [PR#$PullRequestNumber]($($pr.html_url)) SECRET S
 if ($alertsInitiatedFromPr.Count -gt 0) {
 
     $markdownSummary += @"
-| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Location #️⃣ |
-| --- | --- | --- | --- | --- | --- | --- |`n
+| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Validity :white_check_mark: | Location #️⃣ |
+| --- | --- | --- | --- | --- | --- | --- | --- |`n
 "@
 
     $markdownSummary += $markdownSummaryTableRows
@@ -673,6 +679,8 @@ foreach ($alert in $alertsInitiatedFromPr) {
         push_protection_bypassed_by = $alert.push_protection_bypassed_by
         state                       = $alert.state
         resolution                  = $alert.resolution
+        validity                    = $alert.validity
+        validity_checked_at         = $alert.validity_checked_at
         html_url                    = $alert.html_url
     }
 }

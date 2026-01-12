@@ -38,7 +38,16 @@ By adding `Error` annotations, new secret alerts will fail the workflow's status
 
 ### Pull Request Job Summary
 
-The Action summarizes all secrets introduced in the pull request in the workflow run summary:
+The Action summarizes all secrets introduced in the pull request in the workflow run summary. The summary table includes:
+- **Status**: Whether the check passed (🟡 warning) or failed (🔴 error)
+- **Secret Alert**: Link to the alert details
+- **Secret Type**: The type of secret detected
+- **State**: Whether the alert is open or resolved
+- **Resolution**: How the alert was resolved (if applicable)
+- **Push Bypass**: Whether push protection was bypassed
+- **Validity**: The validity status of the secret (`active`, `inactive`, or `unknown`), with the date it was checked
+- **Location**: Where the secret was found (commit, PR title/body, comment, etc.)
+
 <img width="854" alt="Secret Scanning Review Workflow Checks" src="https://user-images.githubusercontent.com/1760475/204209697-7f13551b-5fea-4bc0-bb6e-f4757a82c946.png">
 
 ### Pull Request Comments
@@ -77,6 +86,8 @@ The `alerts` variable is set to a JSON array with the following fields for each 
 - `push_protection_bypassed_by`: The user who bypassed push protection
 - `state`: The state of the alert
 - `resolution`: The resolution of the alert
+- `validity`: The validity status of the secret (`active`, `inactive`, `unknown`, or null if not yet checked)
+- `validity_checked_at`: The timestamp when the validity was last checked (may be null)
 - `html_url`: The URL to the alert in the GitHub UI
 
 An example of the `alerts` step output variable is shown below, where two different secrets were introduced in a PR:
@@ -89,6 +100,8 @@ An example of the `alerts` step output variable is shown below, where two differ
         "push_protection_bypassed_by": null,
         "state": "open",
         "resolution": null,
+        "validity": "active",
+        "validity_checked_at": "2024-01-15T10:30:00Z",
         "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/68"
     },
     {
@@ -118,6 +131,8 @@ An example of the `alerts` step output variable is shown below, where two differ
         },
         "state": "resolved",
         "resolution": "false_positive",
+        "validity": "inactive",
+        "validity_checked_at": "2024-01-14T09:15:00Z",
         "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/67"
     }
 ]
