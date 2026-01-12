@@ -13,12 +13,9 @@
 
 ## Overview
 
-This Action adds more awareness, and optionally fails a pull request status check, when a secret scanning alert is introduced as part of a pull request. This makes it harder for peer reviewers to miss the alert and makes it easier to enforce that the alert is resolved before the pull request is merged (when combined with [repository rulesets](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
+This Action adds more awareness, and optionally fails a pull request status check, when a secret scanning alert is introduced in commits, pull request title, description, comments, reviews, or review comments as part of a pull request. This makes it harder for peer reviewers to miss the alert and makes it easier to enforce that the alert is resolved before the pull request is merged (when combined with [repository rulesets](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
 
 This Action is also helpful in increasing visibility for secrets that are detected with secret scanning, but are not yet [supported with push protection](https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-push-protection), or where push protection has been bypassed.
-
-> [!NOTE]
-> When running the Action with the `python` runtime, the Action will also provide a summary of the secrets introduced in the pull request title, description, comments, review, and review comments.
 
 ## Prerequisites
 
@@ -49,9 +46,9 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
 <img width="854" alt="Secret Scanning Review Workflow Checks" src="https://github.com/advanced-security/secret-scanning-review-action/assets/1760475/5b743082-33d2-45d1-bef2-c0bb5d796932">
 
-### Step Output of Alert Metadata (python runtime only)
+### Step Output of Alert Metadata
 
-When running the Action with the `python` runtime option, the Action will also provide a summary of the secrets introduced in the pull request as a step output variable, `alerts`. You can access this step output in subsequent steps in your workflow for any further processing that you would like to perform.
+The Action provides a summary of the secrets introduced in the pull request as a step output variable, `alerts`. You can access this step output in subsequent steps in your workflow for any further processing that you would like to perform.
 
 > [!NOTE]
 > The `alerts` step output does NOT include secret values.
@@ -135,6 +132,8 @@ An example of the `alerts` step output variable is shown below, where two differ
 
 ## Configuration Options
 
+### Inputs
+
 | Input | Required | Description | Default |
 |-------|----------|-------------|---------|
 | `token` | **Yes** | GitHub Access Token with required permissions. See [token requirements](#token-requirements) below. | - |
@@ -142,13 +141,19 @@ An example of the `alerts` step output variable is shown below, where two differ
 | `fail-on-alert-exclude-closed` | No | Handle failure exit code / annotations as warnings if the alert is found and marked as closed (state: 'resolved'). | `false` |
 | `disable-pr-comment` | No | Disable the PR comment feature. | `false` |
 | `runtime` | No | Runtime to use for the action. Options: `powershell` or `python`. | `powershell` |
-| `skip-closed-alerts` | No | Only process open alerts (applies to both powershell and python runtimes). | `false` |
+| `skip-closed-alerts` | No | Only process open alerts. | `false` |
 | `disable-workflow-summary` | No | Disable the workflow summary markdown table output. | `false` |
 | `python-http-proxy-url` | No | HTTP proxy URL for the python runtime. Example: `http://proxy.example.com:1234` | `""` |
 | `python-https-proxy-url` | No | HTTPS proxy URL for the python runtime. Example: `http://proxy.example.com:5678` | `""` |
 | `python-verify-ssl` | No | Enable/disable SSL verification for the python runtime. ⚠️ Disabling is NOT recommended for production. | `true` |
 | `python-skip-closed-alerts` | No | **DEPRECATED** - Use `skip-closed-alerts` instead. | `false` |
 | `python-disable-workflow-summary` | No | **DEPRECATED** - Use `disable-workflow-summary` instead. | `false` |
+
+### Outputs
+
+| Output | Description |
+|--------|-------------|
+| `alerts` | JSON array containing details about the alerts detected in the PR. See [Step Output of Alert Metadata](#step-output-of-alert-metadata) for the JSON schema and example usage. |
 
 ### Token Requirements
 
