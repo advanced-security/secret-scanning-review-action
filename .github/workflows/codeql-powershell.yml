@@ -1,0 +1,32 @@
+name: CodeQL Powershell
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request: 
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "CodeQL Extractor Action"
+        id: codeql
+        uses: advanced-security/codeql-extractor-action@v0.1.0
+        with:
+          extractors: "microsoft/codeql"
+          packs: "microsoft/powershell-queries"
+          languages: "powershell"
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.codeql.output.sarif_results }}
