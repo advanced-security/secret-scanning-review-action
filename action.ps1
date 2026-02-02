@@ -133,6 +133,17 @@ $cred = New-Object System.Management.Automation.PSCredential "username is ignore
 Set-GitHubAuthentication -Credential $cred
 $GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
+# Helper function to get token scopes for debugging (only called on errors)
+function Get-TokenScopes {
+    try {
+        $response = Invoke-GHRestMethod -Method GET -Uri "/user" -ExtendedResult $true
+        return $response.responseHeader['x-oauth-scopes']
+    }
+    catch {
+        return "Unable to retrieve scopes: $($_.Exception.Message)"
+    }
+}
+
 # Helper function to extract ID from URL path
 function Get-IdFromUrl {
     param(
@@ -419,6 +430,10 @@ try {
     Write-ActionInfo "Found $($alerts.Count) default secret scanning alert$($alerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
 }
 catch {
+    if (-not $script:TokenScopes) {
+        $script:TokenScopes = Get-TokenScopes
+    }
+    Write-ActionDebug "Token scopes: $script:TokenScopes"
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
@@ -443,7 +458,7 @@ try {
         $alertNumbers[$alert.number] = $true
     }
     foreach ($genericAlert in $genericAlerts) {
-        if (-not $alertNumbers.ContainsKey($genericAlert.number)) {
+        if ($null -ne $genericAlert -and $null -ne $genericAlert.number -and -not $alertNumbers.ContainsKey($genericAlert.number)) {
             [void]$alerts.Add($genericAlert)
             $alertNumbers[$genericAlert.number] = $true
         }
@@ -458,6 +473,12 @@ catch {
 $alertCount = 0
 $alertsInitiatedFromPr = @()
 foreach ($alert in $alerts) {
+    # Skip alerts that don't have required properties - we need location data to determine if it matches the PR
+    if ($null -eq $alert -or [String]::IsNullOrWhiteSpace($alert.locations_url)) {
+        Write-ActionDebug "Skipping alert without location data (number: $($alert.number), alert_type: $($alert.secret_type_display_name), locations_url: '$($alert.locations_url)')"
+        continue
+    }
+
     <# API: GET Secret Scanning Alert List Locations
     - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert
     - format: /repos/{owner}/{repo}/secret-scanning/alerts/{alert_number}/locations
@@ -476,6 +497,9 @@ foreach ($alert in $alerts) {
         Write-ActionDebug "Found $($locations.Count) secret scanning alert locations for alert #$($alert.number)"
     }
     catch {
+        # Output diagnostic info in debug mode to help diagnose permission issues
+        Write-ActionDebug "Token scopes: $(Get-TokenScopes)"
+        Write-ActionDebug "Alert number: $($alert.number), locations_url: '$($alert.locations_url)'"
         Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
     }
 
@@ -529,7 +553,8 @@ foreach ($alert in $alerts) {
                         Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review."
                         $matchFound = $true
                     }
-                } else {
+                }
+                else {
                     Write-ActionDebug "Skipping PR review URL comparison for alert $($alert.number): unexpected path format '$($reviewUri.AbsolutePath)'."
                 }
             }
