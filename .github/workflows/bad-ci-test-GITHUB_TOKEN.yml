@@ -46,6 +46,7 @@ jobs:
   bad-secret-scanning-review:
     name: '❌ BAD: Secret Scan with GITHUB_TOKEN (WILL FAIL)'
     runs-on: ubuntu-latest
+    environment: bad test
 
     # Even with all these permissions, GITHUB_TOKEN still cannot access secret-scanning API!
     # The secret-scanning API requires a PAT or GitHub App token.
