@@ -123,6 +123,28 @@ if ([String]::IsNullOrWhiteSpace($GitHubToken)) {
     Set-ActionFailed -Message "GitHubToken is not set"
 }
 
+# Helper function to get token type info for debugging
+function Get-TokenInfo {
+    param([string]$Token)
+    try {
+        $headers = @{
+            'Authorization' = "Bearer $Token"
+            'Accept' = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+        }
+        $response = Invoke-WebRequest -Uri "https://api.github.com/rate_limit" -Headers $headers -UseBasicParsing
+
+        $scopes = $response.Headers['x-oauth-scopes']
+        if ($null -eq $scopes -or [String]::IsNullOrWhiteSpace($scopes)) {
+            return "Token type: GitHub App installation token (GITHUB_TOKEN) - no OAuth scopes. Secret scanning API requires a PAT with 'repo' scope or fine-grained PAT with 'secret_scanning_alerts:read'."
+        }
+        return "Token scopes: $scopes"
+    }
+    catch {
+        return "Token info unavailable: $($_.Exception.Message)"
+    }
+}
+
 #configure github module with authentication token ... sample code taken from example 2 for GitHub Action!
 #Get-Help Set-GitHubAuthentication -Examples
 
@@ -131,24 +153,12 @@ if ([String]::IsNullOrWhiteSpace($GitHubToken)) {
 $secureString = ($GitHubToken | ConvertTo-SecureString -AsPlainText -Force)
 $cred = New-Object System.Management.Automation.PSCredential "username is ignored", $secureString
 Set-GitHubAuthentication -Credential $cred
-$GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
-# Helper function to get token scopes for debugging (only called on errors)
-function Get-TokenScopes {
-    try {
-        # Use /rate_limit endpoint as it's accessible with most tokens
-        $response = Invoke-GHRestMethod -Method GET -Uri "/rate_limit" -ExtendedResult $true
-        $scopes = $response.responseHeader['x-oauth-scopes']
-        if ([String]::IsNullOrWhiteSpace($scopes)) {
-            # GITHUB_TOKEN is a GitHub App installation token, not a PAT, so x-oauth-scopes won't be present
-            return "No OAuth scopes (likely GITHUB_TOKEN - GitHub App installation token, not a PAT)"
-        }
-        return $scopes
-    }
-    catch {
-        return "Unable to retrieve scopes: $($_.Exception.Message)"
-    }
-}
+# Get token info for diagnostic purposes (before clearing the token)
+$script:TokenInfo = Get-TokenInfo -Token $GitHubToken
+Write-ActionDebug $script:TokenInfo
+
+$GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
 # Helper function to extract ID from URL path
 function Get-IdFromUrl {
@@ -436,10 +446,7 @@ try {
     Write-ActionInfo "Found $($alerts.Count) default secret scanning alert$($alerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
 }
 catch {
-    if (-not $script:TokenScopes) {
-        $script:TokenScopes = Get-TokenScopes
-    }
-    Write-ActionInfo "Token scopes: $script:TokenScopes"
+    Write-ActionInfo $script:TokenInfo
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
@@ -504,7 +511,7 @@ foreach ($alert in $alerts) {
     }
     catch {
         # Output diagnostic info in debug mode to help diagnose permission issues
-        Write-ActionDebug "Token scopes: $(Get-TokenScopes)"
+        Write-ActionDebug $script:TokenInfo
         Write-ActionDebug "Alert number: $($alert.number), locations_url: '$($alert.locations_url)'"
         Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
     }

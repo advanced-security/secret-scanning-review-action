@@ -82,6 +82,21 @@ jobs:
           fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
           runtime: 'powershell'
 
+      #######################################################################################
+      # THIS STEP WILL ALSO FAIL because the PAT has no permissions
+      #######################################################################################
+      - name: '❌ Secret Scanning Review with No-Permission PAT (EXPECTED TO FAIL)'
+        if: always()
+        uses: ./
+        with:
+          # ⚠️ BAD: Using a PAT with no permissions - this WILL NOT work!
+          # The secret-scanning API requires a PAT with 'repo' scope or
+          # 'secret_scanning_alerts:read' permission for fine-grained PATs.
+          token: ${{ secrets.PAT_NO_PERMISSIONS }}
+
+          fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
+          runtime: 'powershell'
+
       - name: '📝 If we get here, something is wrong'
         if: success()
         run: |
