@@ -157,7 +157,6 @@ Set-GitHubAuthentication -Credential $cred
 
 # Get token info for diagnostic purposes (before clearing the token)
 $script:TokenInfo = Get-TokenInfo -Token $GitHubToken
-Write-ActionDebug $script:TokenInfo
 
 $GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
@@ -448,6 +447,18 @@ try {
 }
 catch {
     Write-ActionInfo $script:TokenInfo
+
+    # Try to get the X-Accepted-GitHub-Permissions header from the error response
+    try {
+        $acceptedPermissions = $_.Exception.Response.Headers.GetValues('X-Accepted-GitHub-Permissions')
+        if ($acceptedPermissions) {
+            Write-ActionInfo "Required permissions for this endpoint: $($acceptedPermissions -join ', ')"
+        }
+    }
+    catch {
+        # Header not available, continue without it
+    }
+
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
