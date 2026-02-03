@@ -370,7 +370,7 @@ try {
     $pr | Add-Member -MemberType NoteProperty -Name 'url' -Value "https://api.github.com/repos/$OrganizationName/$RepositoryName/pulls/$PullRequestNumber" -Force
 }
 catch {
-    Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+    Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure the 'token' input has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 Write-ActionInfo "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commit$($pr.commits -eq 1 ? '' : 's')"
 
@@ -383,7 +383,7 @@ try {
     $commits = Invoke-GHRestMethod -Method GET -Uri $prCommitsUrl.AbsolutePath
 }
 catch {
-    Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber commits.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+    Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber commits.  Ensure the 'token' input has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
 #for each PR commit add the commit sha to the list
@@ -436,7 +436,7 @@ catch {
         # Header not available, continue without it
     }
 
-    Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+    Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
 # Second call: Get generic secret scanning alerts (non-provider patterns and copilot patterns)
@@ -500,7 +500,7 @@ foreach ($alert in $alerts) {
     }
     catch {
         Write-ActionDebug "Alert number: $($alert.number), locations_url: '$($alert.locations_url)'"
-        Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+        Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure the 'token' input has proper permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
     }
 
     $locationMatches = @()
