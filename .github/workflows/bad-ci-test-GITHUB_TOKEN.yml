@@ -97,6 +97,21 @@ jobs:
           fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
           runtime: 'powershell'
 
+      #######################################################################################
+      # THIS STEP WILL ALSO FAIL because the PAT has permissions but not secret scanning
+      #######################################################################################
+      - name: '❌ Secret Scanning Review with PAT Missing Secret Scanning (EXPECTED TO FAIL)'
+        if: always()
+        uses: ./
+        with:
+          # ⚠️ BAD: Using a PAT that has some permissions but NOT secret scanning access!
+          # This PAT might have 'read:org' or other scopes, but without 'repo' scope
+          # it cannot access the secret-scanning API.
+          token: ${{ secrets.SSRA_GITHUB_PAT_NO_SECRET_PERMISSIONS }}
+
+          fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
+          runtime: 'powershell'
+
       - name: '📝 If we get here, something is wrong'
         if: success()
         run: |

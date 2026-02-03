@@ -136,7 +136,8 @@ function Get-TokenInfo {
 
         $scopes = $response.Headers['x-oauth-scopes']
         if ($null -eq $scopes -or [String]::IsNullOrWhiteSpace($scopes)) {
-            return "Token type: GitHub App installation token (GITHUB_TOKEN) - no OAuth scopes. Secret scanning API requires a PAT with 'repo' scope or fine-grained PAT with 'secret_scanning_alerts:read'."
+            # No OAuth scopes - either a GitHub App installation token (GITHUB_TOKEN) or a PAT with no scopes
+            return "Token has no OAuth scopes (either GITHUB_TOKEN or a PAT with no permissions). Secret scanning API requires a PAT with 'repo' scope or fine-grained PAT with 'secret_scanning_alerts:read'."
         }
         return "Token scopes: $scopes"
     }
