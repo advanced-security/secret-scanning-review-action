@@ -68,7 +68,7 @@ jobs:
       #######################################################################################
       # THIS STEP WILL FAIL because GITHUB_TOKEN cannot access /secret-scanning/alerts API
       #######################################################################################
-      - name: '❌ Secret Scanning Review (EXPECTED TO FAIL)'
+      - name: '❌ Secret Scanning Review with GITHUB_TOKEN (EXPECTED TO FAIL)'
         uses: ./
         with:
           # ⚠️ BAD: Using GITHUB_TOKEN - this WILL NOT work!
