@@ -55,6 +55,9 @@ jobs:
       security-events: read  # This does NOT grant secret-scanning access!
 
     steps:
+      - name: '📥 Checkout repository'
+        uses: actions/checkout@v4
+
       - name: '⚠️ WARNING - This is a bad test'
         run: |
           echo "::warning::This workflow intentionally uses GITHUB_TOKEN which lacks secret-scanning permissions"
