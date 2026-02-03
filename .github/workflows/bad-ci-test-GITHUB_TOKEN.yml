@@ -11,7 +11,7 @@
 ###############################################################################################
 ###############################################################################################
 ##                                                                                           ##
-##  ⚠️  WARNING: THIS WORKFLOW IS INTENTIONALLY BROKEN FOR TESTING PURPOSES ⚠️               ##
+##  ⚠️  WARNING: THIS WORKFLOW IS INTENTIONALLY BROKEN FOR TESTING PURPOSES ⚠️              ##
 ##                                                                                           ##
 ##  DO NOT USE THIS AS A TEMPLATE FOR YOUR OWN WORKFLOWS!                                    ##
 ##                                                                                           ##
@@ -24,8 +24,8 @@
 ##    3. Ensure the action fails gracefully with helpful error messages                      ##
 ##                                                                                           ##
 ##  CORRECT USAGE requires a PAT or GitHub App token with:                                   ##
-##    - Classic PAT: 'repo' scope (or 'public_repo' + 'security_events' for public repos)   ##
-##    - Fine-grained PAT: 'secret_scanning_alerts:read' + 'pull_requests:write'             ##
+##    - Classic PAT: 'repo' scope (or 'public_repo' + 'security_events' for public repos)    ##
+##    - Fine-grained PAT: 'secret_scanning_alerts:read' + 'pull_requests:write'              ##
 ##                                                                                           ##
 ##  See README.md for proper configuration instructions.                                     ##
 ##                                                                                           ##
@@ -46,21 +46,21 @@ jobs:
   bad-secret-scanning-review:
     name: '❌ BAD: Secret Scan with GITHUB_TOKEN (WILL FAIL)'
     runs-on: ubuntu-latest
-    
+
     # Even with all these permissions, GITHUB_TOKEN still cannot access secret-scanning API!
     # The secret-scanning API requires a PAT or GitHub App token.
     permissions:
       contents: read
       pull-requests: write
       security-events: read  # This does NOT grant secret-scanning access!
-    
+
     steps:
       - name: '⚠️ WARNING - This is a bad test'
         run: |
           echo "::warning::This workflow intentionally uses GITHUB_TOKEN which lacks secret-scanning permissions"
           echo "::warning::Expected behavior: The action should fail with a permission error"
           echo "::warning::This tests the error handling and debug output of the action"
-      
+
       #######################################################################################
       # THIS STEP WILL FAIL because GITHUB_TOKEN cannot access /secret-scanning/alerts API
       #######################################################################################
@@ -74,13 +74,13 @@ jobs:
           # GITHUB_TOKEN does not have access to the secret-scanning API regardless of
           # what permissions are set in the workflow's 'permissions' block.
           token: ${{ secrets.GITHUB_TOKEN }}
-          
+
           fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
           runtime: 'powershell'
         env:
           # Enable debug mode to see token scopes in the error output
           ACTIONS_STEP_DEBUG: true
-      
+
       - name: '📝 If we get here, something is wrong'
         if: success()
         run: |
