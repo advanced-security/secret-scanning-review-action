@@ -112,6 +112,21 @@ jobs:
           fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
           runtime: 'powershell'
 
+      #######################################################################################
+      # THIS STEP WILL ALSO FAIL - Classic PAT without repo scope
+      #######################################################################################
+      - name: '❌ Secret Scanning Review with Classic PAT Missing Repo Scope (EXPECTED TO FAIL)'
+        if: always()
+        uses: ./
+        with:
+          # ⚠️ BAD: Using a classic PAT that has some scopes but NOT 'repo' scope!
+          # Classic PATs need 'repo' scope for secret scanning access.
+          # This test verifies the OAuth scopes are displayed in the error output.
+          token: ${{ secrets.SSRA_GITHUB_PAT_CLASSIC_NO_SECRET_PERMISSIONS }}
+
+          fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
+          runtime: 'powershell'
+
       - name: '📝 If we get here, something is wrong'
         if: success()
         run: |

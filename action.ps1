@@ -396,6 +396,7 @@ try {
     $pr | Add-Member -MemberType NoteProperty -Name 'url' -Value "https://api.github.com/repos/$OrganizationName/$RepositoryName/pulls/$PullRequestNumber" -Force
 }
 catch {
+    Write-ActionInfo $script:TokenInfo
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 Write-ActionInfo "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commit$($pr.commits -eq 1 ? '' : 's')"
@@ -409,6 +410,7 @@ try {
     $commits = Invoke-GHRestMethod -Method GET -Uri $prCommitsUrl.AbsolutePath
 }
 catch {
+    Write-ActionInfo $script:TokenInfo
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber commits.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
