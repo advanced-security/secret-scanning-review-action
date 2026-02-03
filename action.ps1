@@ -426,6 +426,8 @@ catch {
     Write-ActionInfo "See: https://github.com/advanced-security/secret-scanning-review-action#token-permissions"
 
     # Try to get the X-Accepted-GitHub-Permissions header from the error response
+    # Note: This header is only returned on 403 Forbidden responses. If the token lacks basic repo access,
+    # GitHub returns 404 Not Found instead (to avoid leaking repo existence), and won't include this header.
     try {
         $acceptedPermissions = $_.Exception.Response.Headers.GetValues('X-Accepted-GitHub-Permissions')
         if ($acceptedPermissions) {
