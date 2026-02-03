@@ -47,6 +47,10 @@ jobs:
     name: '❌ BAD: Secret Scan with GITHUB_TOKEN (WILL FAIL)'
     runs-on: ubuntu-latest
 
+    # Enable debug mode to see token scopes in the error output
+    env:
+      ACTIONS_STEP_DEBUG: true
+
     # Even with all these permissions, GITHUB_TOKEN still cannot access secret-scanning API!
     # The secret-scanning API requires a PAT or GitHub App token.
     permissions:
@@ -80,9 +84,6 @@ jobs:
 
           fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
           runtime: 'powershell'
-        env:
-          # Enable debug mode to see token scopes in the error output
-          ACTIONS_STEP_DEBUG: true
 
       - name: '📝 If we get here, something is wrong'
         if: success()

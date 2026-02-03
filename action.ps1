@@ -136,8 +136,14 @@ $GitHubToken = $secureString = $cred = $null # clear this out now that it's no l
 # Helper function to get token scopes for debugging (only called on errors)
 function Get-TokenScopes {
     try {
-        $response = Invoke-GHRestMethod -Method GET -Uri "/user" -ExtendedResult $true
-        return $response.responseHeader['x-oauth-scopes']
+        # Use /rate_limit endpoint as it's accessible with most tokens
+        $response = Invoke-GHRestMethod -Method GET -Uri "/rate_limit" -ExtendedResult $true
+        $scopes = $response.responseHeader['x-oauth-scopes']
+        if ([String]::IsNullOrWhiteSpace($scopes)) {
+            # GITHUB_TOKEN is a GitHub App installation token, not a PAT, so x-oauth-scopes won't be present
+            return "No OAuth scopes (likely GITHUB_TOKEN - GitHub App installation token, not a PAT)"
+        }
+        return $scopes
     }
     catch {
         return "Unable to retrieve scopes: $($_.Exception.Message)"
