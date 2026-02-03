@@ -1,0 +1,173 @@
+###############################################################################################
+###############################################################################################
+##                                                                                           ##
+##    ██████╗  █████╗ ██████╗     ████████╗███████╗███████╗████████╗                         ##
+##    ██╔══██╗██╔══██╗██╔══██╗    ╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝                         ##
+##    ██████╔╝███████║██║  ██║       ██║   █████╗  ███████╗   ██║                            ##
+##    ██╔══██╗██╔══██║██║  ██║       ██║   ██╔══╝  ╚════██║   ██║                            ##
+##    ██████╔╝██║  ██║██████╔╝       ██║   ███████╗███████║   ██║                            ##
+##    ╚═════╝ ╚═╝  ╚═╝╚═════╝        ╚═╝   ╚══════╝╚══════╝   ╚═╝                            ##
+##                                                                                           ##
+###############################################################################################
+###############################################################################################
+##                                                                                           ##
+##  ⚠️  WARNING: THIS WORKFLOW IS INTENTIONALLY BROKEN FOR TESTING PURPOSES ⚠️              ##
+##                                                                                           ##
+##  DO NOT USE THIS AS A TEMPLATE FOR YOUR OWN WORKFLOWS!                                    ##
+##                                                                                           ##
+##  This workflow uses the built-in GITHUB_TOKEN which DOES NOT have permissions             ##
+##  to access the secret-scanning API. It will fail with permission errors.                  ##
+##                                                                                           ##
+##  The purpose of this workflow is to:                                                      ##
+##    1. Test error handling when insufficient permissions are provided                      ##
+##    2. Verify debug output shows token scopes correctly                                    ##
+##    3. Ensure the action fails gracefully with helpful error messages                      ##
+##                                                                                           ##
+##  CORRECT USAGE requires a PAT or GitHub App token with:                                   ##
+##    - Classic PAT: 'repo' scope (or 'public_repo' + 'security_events' for public repos)    ##
+##    - Fine-grained PAT: 'secret_scanning_alerts:read' + 'pull_requests:write'              ##
+##                                                                                           ##
+##  See README.md for proper configuration instructions.                                     ##
+##                                                                                           ##
+###############################################################################################
+###############################################################################################
+
+name: '❌ BAD TEST - DO NOT COPY - Uses GITHUB_TOKEN (will fail)'
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  ###############################################################################################
+  # THIS JOB WILL FAIL - GITHUB_TOKEN CANNOT ACCESS SECRET SCANNING API
+  ###############################################################################################
+  bad-secret-scanning-review:
+    name: '❌ BAD: Secret Scan with GITHUB_TOKEN (WILL FAIL)'
+    runs-on: ubuntu-latest
+    environment: bad test
+
+    # Even with all these permissions, GITHUB_TOKEN still cannot access secret-scanning API!
+    # The secret-scanning API requires a PAT or GitHub App token.
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: read  # This does NOT grant secret-scanning access!
+
+    steps:
+      - name: '📥 Checkout repository'
+        uses: actions/checkout@v4
+
+      - name: '⚠️ WARNING - This is a bad test'
+        run: |
+          echo "::warning::This workflow intentionally uses GITHUB_TOKEN which lacks secret-scanning permissions"
+          echo "::warning::Expected behavior: The action should fail with a permission error"
+          echo "::warning::This tests the error handling and debug output of the action"
+
+      #######################################################################################
+      # THIS STEP WILL FAIL because GITHUB_TOKEN cannot access /secret-scanning/alerts API
+      #######################################################################################
+      - name: '❌ Secret Scanning Review with GITHUB_TOKEN (EXPECTED TO FAIL)'
+        id: github-token-test
+        continue-on-error: true
+        uses: ./
+        with:
+          # ⚠️ BAD: Using GITHUB_TOKEN - this WILL NOT work!
+          # The secret-scanning API requires a PAT with 'repo' scope or a GitHub App token
+          # with 'secret_scanning_alerts:read' permission.
+          #
+          # GITHUB_TOKEN does not have access to the secret-scanning API regardless of
+          # what permissions are set in the workflow's 'permissions' block.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+          fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
+          runtime: 'powershell'
+
+      #######################################################################################
+      # THIS STEP WILL ALSO FAIL because the PAT has no permissions
+      #######################################################################################
+      - name: '❌ Secret Scanning Review with No-Permission PAT (EXPECTED TO FAIL)'
+        id: no-permission-pat-test
+        continue-on-error: true
+        uses: ./
+        with:
+          # ⚠️ BAD: Using a PAT with no permissions - this WILL NOT work!
+          # The secret-scanning API requires a PAT with 'repo' scope or
+          # 'secret_scanning_alerts:read' permission for fine-grained PATs.
+          token: ${{ secrets.PAT_NO_PERMISSIONS }}
+
+          fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
+          runtime: 'powershell'
+
+      #######################################################################################
+      # THIS STEP WILL ALSO FAIL because the PAT has permissions but not secret scanning
+      #######################################################################################
+      - name: '❌ Secret Scanning Review with PAT Missing Secret Scanning (EXPECTED TO FAIL)'
+        id: no-secret-scanning-pat-test
+        continue-on-error: true
+        uses: ./
+        with:
+          # ⚠️ BAD: Using a PAT that has some permissions but NOT secret scanning access!
+          # This PAT might have 'read:org' or other scopes, but without 'repo' scope
+          # it cannot access the secret-scanning API.
+          token: ${{ secrets.SSRA_GITHUB_PAT_NO_SECRET_PERMISSIONS }}
+
+          fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
+          runtime: 'powershell'
+
+      #######################################################################################
+      # THIS STEP WILL ALSO FAIL - Classic PAT without repo scope
+      #######################################################################################
+      - name: '❌ Secret Scanning Review with Classic PAT Missing Repo Scope (EXPECTED TO FAIL)'
+        id: classic-pat-test
+        continue-on-error: true
+        uses: ./
+        with:
+          # ⚠️ BAD: Using a classic PAT that has some scopes but NOT 'repo' scope!
+          # Classic PATs need 'repo' scope for secret scanning access.
+          # This test verifies the OAuth scopes are displayed in the error output.
+          token: ${{ secrets.SSRA_GITHUB_PAT_CLASSIC_NO_SECRET_PERMISSIONS }}
+
+          fail-on-alert: false  # Doesn't matter - will fail before this is evaluated
+          runtime: 'powershell'
+
+      #######################################################################################
+      # Verify all tests failed as expected - if any succeeded, something is wrong!
+      #######################################################################################
+      - name: '✅ Verify all tests failed as expected'
+        run: |
+          echo "Checking test outcomes..."
+          echo "GITHUB_TOKEN test: ${{ steps.github-token-test.outcome }}"
+          echo "No-permission PAT test: ${{ steps.no-permission-pat-test.outcome }}"
+          echo "No secret scanning PAT test: ${{ steps.no-secret-scanning-pat-test.outcome }}"
+          echo "Classic PAT test: ${{ steps.classic-pat-test.outcome }}"
+
+          FAILED=0
+
+          if [ "${{ steps.github-token-test.outcome }}" != "failure" ]; then
+            echo "::error::GITHUB_TOKEN test should have failed but got: ${{ steps.github-token-test.outcome }}"
+            FAILED=1
+          fi
+
+          if [ "${{ steps.no-permission-pat-test.outcome }}" != "failure" ]; then
+            echo "::error::No-permission PAT test should have failed but got: ${{ steps.no-permission-pat-test.outcome }}"
+            FAILED=1
+          fi
+
+          if [ "${{ steps.no-secret-scanning-pat-test.outcome }}" != "failure" ]; then
+            echo "::error::No secret scanning PAT test should have failed but got: ${{ steps.no-secret-scanning-pat-test.outcome }}"
+            FAILED=1
+          fi
+
+          if [ "${{ steps.classic-pat-test.outcome }}" != "failure" ]; then
+            echo "::error::Classic PAT test should have failed but got: ${{ steps.classic-pat-test.outcome }}"
+            FAILED=1
+          fi
+
+          if [ $FAILED -eq 1 ]; then
+            echo "::error::One or more tests did not fail as expected!"
+            exit 1
+          fi
+
+          echo "✅ All tests failed as expected - error handling is working correctly!"
