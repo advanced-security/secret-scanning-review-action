@@ -439,7 +439,7 @@ catch {
     if (-not $script:TokenScopes) {
         $script:TokenScopes = Get-TokenScopes
     }
-    Write-ActionDebug "Token scopes: $script:TokenScopes"
+    Write-ActionInfo "Token scopes: $script:TokenScopes"
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alerts.  Ensure GITHUB_TOKEN has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 

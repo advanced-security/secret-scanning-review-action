@@ -47,10 +47,6 @@ jobs:
     name: '❌ BAD: Secret Scan with GITHUB_TOKEN (WILL FAIL)'
     runs-on: ubuntu-latest
 
-    # Enable debug mode to see token scopes in the error output
-    env:
-      ACTIONS_STEP_DEBUG: true
-
     # Even with all these permissions, GITHUB_TOKEN still cannot access secret-scanning API!
     # The secret-scanning API requires a PAT or GitHub App token.
     permissions:
