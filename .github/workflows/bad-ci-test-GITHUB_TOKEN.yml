@@ -65,7 +65,7 @@ jobs:
       # THIS STEP WILL FAIL because GITHUB_TOKEN cannot access /secret-scanning/alerts API
       #######################################################################################
       - name: '❌ Secret Scanning Review (EXPECTED TO FAIL)'
-        uses: advanced-security/secret-scanning-review-action@v2
+        uses: ./
         with:
           # ⚠️ BAD: Using GITHUB_TOKEN - this WILL NOT work!
           # The secret-scanning API requires a PAT with 'repo' scope or a GitHub App token
