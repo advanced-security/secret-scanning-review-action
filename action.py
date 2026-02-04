@@ -446,12 +446,12 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             else:
                 location_value = alert_location
             
-            # Format validity with checked date if available
+            # Format validity with checked date as hover tooltip
             validity_value = alert.get('validity')
             if validity_value is None:
                 validity_value = '❌'
             if alert.get('validity_checked_at'):
-                validity_value += f" ({alert['validity_checked_at']})"
+                validity_value = f'[{validity_value}](# "{alert["validity_checked_at"]}")'
             
             markdown_summary_table_rows += (
                 f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "

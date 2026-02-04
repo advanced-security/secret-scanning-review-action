@@ -594,10 +594,10 @@ foreach ($alert in $alertsInitiatedFromPr) {
         # Build location value for the markdown table
         $locationValue = Get-AlertLocationWithLink -location $location -prHtmlUrl $pr.html_url -pullRequestNumber $PullRequestNumber
 
-        # Format validity with checked date if available
+        # Format validity with checked date as hover tooltip
         $validityValue = $null -eq $alert.validity ? '❌' : $alert.validity
         if ($alert.validity_checked_at) {
-            $validityValue += " ($($alert.validity_checked_at))"
+            $validityValue = "[$validityValue](# `"$($alert.validity_checked_at)`")"
         }
 
         $markdownSummaryTableRows += "| $passFail | :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($null -eq $alert.resolution ? '❌' : $alert.resolution) | $($alert.push_protection_bypassed) | $validityValue | $locationValue | `n"

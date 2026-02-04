@@ -45,7 +45,7 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 - **State**: Whether the alert is open or resolved
 - **Resolution**: How the alert was resolved (if applicable)
 - **Push Bypass**: Whether push protection was bypassed
-- **Validity**: The validity status of the secret (`active`, `inactive`, or `unknown`), with the date it was checked
+- **Validity**: The validity status of the secret (`active`, `inactive`, or `unknown`). When available, hover over the status to see the date it was checked.
 - **Location**: Where the secret was found (commit, PR title/body, comment, etc.)
 
 <img width="854" alt="Secret Scanning Review Workflow Checks" src="https://user-images.githubusercontent.com/1760475/204209697-7f13551b-5fea-4bc0-bb6e-f4757a82c946.png">
