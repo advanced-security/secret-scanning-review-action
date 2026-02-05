@@ -50,6 +50,14 @@ jobs:
 
           Invoke-Pester -Configuration $config
 
+          # Rename package in coverage report for better display
+          $coverageFile = 'TestResults/coverage.cobertura.xml'
+          if (Test-Path $coverageFile) {
+              $content = Get-Content $coverageFile -Raw
+              $content = $content -replace 'package name=""', 'package name="PowerShell Action"'
+              Set-Content $coverageFile $content
+          }
+
       - name: Publish test results (JUnit)
         uses: dorny/test-reporter@v1
         if: always()
