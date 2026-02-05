@@ -23,7 +23,6 @@ the existing one. If you're not sure how to do that,
 [here is a guide](https://github.com/RichardLitt/knowledge/blob/master/github/amending-a-commit-guide.md)
 on the different ways you can update your PR so that we can merge it.
 
-
 ## Floating version tag
 
 Once you have a tag and release using the semver version, the last remaining thing to do is to move the dynamic version
