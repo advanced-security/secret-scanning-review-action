@@ -1,4 +1,4 @@
-<# 
+<#
 .SYNOPSIS
 Helper functions for the secret scanning review action.
 

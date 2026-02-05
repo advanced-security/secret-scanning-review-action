@@ -114,14 +114,14 @@ Describe 'Get-PullRequestHtmlUrl' {
 
     It 'Returns html_url from API response' {
         Mock Invoke-GHRestMethod { return @{ html_url = 'https://github.com/owner/repo/pull/42' } } -ModuleName ActionHelpers
-        
+
         $result = Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/42'
         $result | Should -Be 'https://github.com/owner/repo/pull/42'
     }
 
     It 'Returns null when API call fails (404)' {
         Mock Invoke-GHRestMethod { throw "Not Found" } -ModuleName ActionHelpers
-        
+
         $result = Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/999'
         $result | Should -BeNullOrEmpty
     }
@@ -149,7 +149,7 @@ Describe 'Get-AlertLocationWithLink' {
 
     It 'Returns linked pull_request_title when API succeeds' {
         Mock Get-PullRequestHtmlUrl { return 'https://github.com/owner/repo/pull/42' } -ModuleName ActionHelpers
-        
+
         $location = @{
             type = 'pull_request_title'
             details = @{ pull_request_title_url = 'https://api.github.com/repos/owner/repo/pulls/42' }
@@ -160,7 +160,7 @@ Describe 'Get-AlertLocationWithLink' {
 
     It 'Returns plain text pull_request_title when API fails' {
         Mock Get-PullRequestHtmlUrl { return $null } -ModuleName ActionHelpers
-        
+
         $location = @{
             type = 'pull_request_title'
             details = @{ pull_request_title_url = 'https://api.github.com/repos/owner/repo/pulls/42' }
@@ -171,7 +171,7 @@ Describe 'Get-AlertLocationWithLink' {
 
     It 'Returns fallback URL for pull_request_review_comment when API fails' {
         Mock Get-PullRequestHtmlUrl { return $null } -ModuleName ActionHelpers
-        
+
         $location = @{
             type = 'pull_request_review_comment'
             details = @{ pull_request_review_comment_url = 'https://api.github.com/repos/owner/repo/pulls/comments/12345' }
@@ -185,7 +185,7 @@ Describe 'Get-PullRequestComments' {
     It 'Returns empty array when API call fails' {
         Mock Invoke-GHRestMethod { throw "API Error" } -ModuleName ActionHelpers
         Mock Write-ActionDebug { } -ModuleName ActionHelpers
-        
+
         $result = Get-PullRequestComments -owner 'owner' -repo 'repo' -pullNumber 42
         $result | Should -BeNullOrEmpty
     }
@@ -196,7 +196,7 @@ Describe 'Get-PullRequestComments' {
             @{ id = 2; body = 'Comment 2' }
         )
         Mock Invoke-GHRestMethod { return $mockComments } -ModuleName ActionHelpers
-        
+
         $result = Get-PullRequestComments -owner 'owner' -repo 'repo' -pullNumber 42
         $result.Count | Should -Be 2
     }
@@ -206,37 +206,37 @@ Describe 'Write-AlertAnnotation' {
     It 'Does nothing for non-commit alert types' {
         Mock Write-ActionError { } -ModuleName ActionHelpers
         Mock Write-ActionWarning { } -ModuleName ActionHelpers
-        
+
         $location = @{ type = 'pull_request_title'; details = @{} }
         Write-AlertAnnotation -Level 'Error' -Message 'Test' -Location $location -AlertType 'pull_request_title'
-        
+
         Should -Invoke Write-ActionError -Times 0 -ModuleName ActionHelpers
         Should -Invoke Write-ActionWarning -Times 0 -ModuleName ActionHelpers
     }
 
     It 'Writes error annotation for commit type with Error level' {
         Mock Write-ActionError { } -ModuleName ActionHelpers
-        
+
         $location = @{
             type = 'commit'
             details = @{ path = 'src/file.ps1'; start_line = 10; start_column = 5 }
         }
         Write-AlertAnnotation -Level 'Error' -Message 'Secret found' -Location $location -AlertType 'commit'
-        
-        Should -Invoke Write-ActionError -Times 1 -ModuleName ActionHelpers -ParameterFilter { 
+
+        Should -Invoke Write-ActionError -Times 1 -ModuleName ActionHelpers -ParameterFilter {
             $Message -eq 'Secret found' -and $File -eq 'src/file.ps1' -and $Line -eq 10 -and $Col -eq 5
         }
     }
 
     It 'Writes warning annotation for commit type with Warning level' {
         Mock Write-ActionWarning { } -ModuleName ActionHelpers
-        
+
         $location = @{
             type = 'commit'
             details = @{ path = 'src/file.ps1'; start_line = 20; start_column = 1 }
         }
         Write-AlertAnnotation -Level 'Warning' -Message 'Secret found' -Location $location -AlertType 'commit'
-        
+
         Should -Invoke Write-ActionWarning -Times 1 -ModuleName ActionHelpers -ParameterFilter {
             $Message -eq 'Secret found' -and $File -eq 'src/file.ps1' -and $Line -eq 20 -and $Col -eq 1
         }
