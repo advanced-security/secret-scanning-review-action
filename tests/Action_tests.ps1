@@ -1,57 +1,17 @@
-# Tests for action.ps1 functions
+# Tests for action.ps1 helper functions
 
 Import-Module Pester
 
 BeforeAll {
-    # Define the functions from action.ps1 for testing
-    # We extract these to avoid running the full script which has side effects (module installation, auth setup, etc.)
+    # Import the ActionHelpers module from the repo root
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    Import-Module (Join-Path $repoRoot 'ActionHelpers.psm1') -Force
 
-    # Helper function to extract ID from URL path
-    function Get-IdFromUrl {
-        param(
-            [string]$url
-        )
-
-        if (-not $url) {
-            return $null
-        }
-
-        $uri = [uri]$url
-        return ($uri.AbsolutePath -split '/')[-1]
-    }
-
-    # Helper function to get alert location type description
-    function Get-AlertLocationType {
-        param($location)
-
-        if (-not $location.type) {
-            throw "Alert location does not have a 'type' field."
-        }
-
-        switch ($location.type) {
-            'commit' {
-                return "Commit SHA $($location.details.commit_sha)"
-            }
-            'pull_request_title' {
-                return "Pull request title"
-            }
-            'pull_request_body' {
-                return "Pull request body"
-            }
-            'pull_request_comment' {
-                return "Pull request comment"
-            }
-            'pull_request_review' {
-                return "Pull request review"
-            }
-            'pull_request_review_comment' {
-                return "Pull request review comment"
-            }
-            default {
-                return $null
-            }
-        }
-    }
+    # Define mock functions for external dependencies
+    function global:Invoke-GHRestMethod { param($Method, $Uri) }
+    function global:Write-ActionError { param($Message, $File, $Line, $Col) }
+    function global:Write-ActionWarning { param($Message, $File, $Line, $Col) }
+    function global:Write-ActionDebug { param($Message) }
 }
 
 Describe 'Get-IdFromUrl' {
@@ -143,5 +103,142 @@ Describe 'Get-AlertLocationType' {
             details = @{}
         }
         Get-AlertLocationType -location $location | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-PullRequestHtmlUrl' {
+    It 'Returns null for empty apiUrl' {
+        Get-PullRequestHtmlUrl -apiUrl '' | Should -BeNullOrEmpty
+        Get-PullRequestHtmlUrl -apiUrl $null | Should -BeNullOrEmpty
+    }
+
+    It 'Returns html_url from API response' {
+        Mock Invoke-GHRestMethod { return @{ html_url = 'https://github.com/owner/repo/pull/42' } } -ModuleName ActionHelpers
+        
+        $result = Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/42'
+        $result | Should -Be 'https://github.com/owner/repo/pull/42'
+    }
+
+    It 'Returns null when API call fails (404)' {
+        Mock Invoke-GHRestMethod { throw "Not Found" } -ModuleName ActionHelpers
+        
+        $result = Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/999'
+        $result | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-AlertLocationWithLink' {
+    BeforeEach {
+        # Default mock - return null to test fallback paths
+        Mock Get-PullRequestHtmlUrl { return $null } -ModuleName ActionHelpers
+    }
+
+    It 'Throws when location has no type field' {
+        $location = @{ details = @{} }
+        { Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42 } | Should -Throw
+    }
+
+    It 'Returns commit link for commit type' {
+        $location = @{
+            type = 'commit'
+            details = @{ commit_sha = 'abc123def456789' }
+        }
+        $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42
+        $result | Should -Be '[abc123d](https://github.com/owner/repo/pull/42/commits/abc123def456789)'
+    }
+
+    It 'Returns linked pull_request_title when API succeeds' {
+        Mock Get-PullRequestHtmlUrl { return 'https://github.com/owner/repo/pull/42' } -ModuleName ActionHelpers
+        
+        $location = @{
+            type = 'pull_request_title'
+            details = @{ pull_request_title_url = 'https://api.github.com/repos/owner/repo/pulls/42' }
+        }
+        $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42
+        $result | Should -Be '[Pull request title](https://github.com/owner/repo/pull/42)'
+    }
+
+    It 'Returns plain text pull_request_title when API fails' {
+        Mock Get-PullRequestHtmlUrl { return $null } -ModuleName ActionHelpers
+        
+        $location = @{
+            type = 'pull_request_title'
+            details = @{ pull_request_title_url = 'https://api.github.com/repos/owner/repo/pulls/42' }
+        }
+        $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42
+        $result | Should -Be 'Pull request title'
+    }
+
+    It 'Returns fallback URL for pull_request_review_comment when API fails' {
+        Mock Get-PullRequestHtmlUrl { return $null } -ModuleName ActionHelpers
+        
+        $location = @{
+            type = 'pull_request_review_comment'
+            details = @{ pull_request_review_comment_url = 'https://api.github.com/repos/owner/repo/pulls/comments/12345' }
+        }
+        $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42
+        $result | Should -Be '[Pull request review comment](https://github.com/owner/repo/pull/42#discussion_r12345)'
+    }
+}
+
+Describe 'Get-PullRequestComments' {
+    It 'Returns empty array when API call fails' {
+        Mock Invoke-GHRestMethod { throw "API Error" } -ModuleName ActionHelpers
+        Mock Write-ActionDebug { } -ModuleName ActionHelpers
+        
+        $result = Get-PullRequestComments -owner 'owner' -repo 'repo' -pullNumber 42
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'Returns comments from single page' {
+        $mockComments = @(
+            @{ id = 1; body = 'Comment 1' },
+            @{ id = 2; body = 'Comment 2' }
+        )
+        Mock Invoke-GHRestMethod { return $mockComments } -ModuleName ActionHelpers
+        
+        $result = Get-PullRequestComments -owner 'owner' -repo 'repo' -pullNumber 42
+        $result.Count | Should -Be 2
+    }
+}
+
+Describe 'Write-AlertAnnotation' {
+    It 'Does nothing for non-commit alert types' {
+        Mock Write-ActionError { } -ModuleName ActionHelpers
+        Mock Write-ActionWarning { } -ModuleName ActionHelpers
+        
+        $location = @{ type = 'pull_request_title'; details = @{} }
+        Write-AlertAnnotation -Level 'Error' -Message 'Test' -Location $location -AlertType 'pull_request_title'
+        
+        Should -Invoke Write-ActionError -Times 0 -ModuleName ActionHelpers
+        Should -Invoke Write-ActionWarning -Times 0 -ModuleName ActionHelpers
+    }
+
+    It 'Writes error annotation for commit type with Error level' {
+        Mock Write-ActionError { } -ModuleName ActionHelpers
+        
+        $location = @{
+            type = 'commit'
+            details = @{ path = 'src/file.ps1'; start_line = 10; start_column = 5 }
+        }
+        Write-AlertAnnotation -Level 'Error' -Message 'Secret found' -Location $location -AlertType 'commit'
+        
+        Should -Invoke Write-ActionError -Times 1 -ModuleName ActionHelpers -ParameterFilter { 
+            $Message -eq 'Secret found' -and $File -eq 'src/file.ps1' -and $Line -eq 10 -and $Col -eq 5
+        }
+    }
+
+    It 'Writes warning annotation for commit type with Warning level' {
+        Mock Write-ActionWarning { } -ModuleName ActionHelpers
+        
+        $location = @{
+            type = 'commit'
+            details = @{ path = 'src/file.ps1'; start_line = 20; start_column = 1 }
+        }
+        Write-AlertAnnotation -Level 'Warning' -Message 'Secret found' -Location $location -AlertType 'commit'
+        
+        Should -Invoke Write-ActionWarning -Times 1 -ModuleName ActionHelpers -ParameterFilter {
+            $Message -eq 'Secret found' -and $File -eq 'src/file.ps1' -and $Line -eq 20 -and $Col -eq 1
+        }
     }
 }

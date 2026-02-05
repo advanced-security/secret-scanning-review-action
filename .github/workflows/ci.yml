@@ -44,7 +44,7 @@ jobs:
 
           # Emit Cobertura XML coverage for the action scripts
           $config.CodeCoverage.Enabled = $true
-          $config.CodeCoverage.Path = @('action.ps1')
+          $config.CodeCoverage.Path = @('action.ps1', 'ActionHelpers.psm1')
           $config.CodeCoverage.OutputFormat = 'Cobertura'
           $config.CodeCoverage.OutputPath = 'TestResults/coverage.cobertura.xml'
 
@@ -113,7 +113,7 @@ jobs:
 
           # Emit Cobertura XML coverage for the action scripts
           $config.CodeCoverage.Enabled = $true
-          $config.CodeCoverage.Path = @('action.ps1')
+          $config.CodeCoverage.Path = @('action.ps1', 'ActionHelpers.psm1')
           $config.CodeCoverage.OutputFormat = 'Cobertura'
           $config.CodeCoverage.OutputPath = 'TestResults/coverage.cobertura.xml'
 
