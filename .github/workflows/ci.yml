@@ -32,8 +32,8 @@ jobs:
 
           $config = New-PesterConfiguration
 
-          # Tests location - specify exact file since naming doesn't match *.Tests.ps1 convention
-          $config.Run.Path = 'tests/GitHubActions_tests.ps1'
+          # Tests location - run all test files in the tests directory
+          $config.Run.Path = @('tests/GitHubActions_tests.ps1', 'tests/Action_tests.ps1')
           $config.Filter.ExcludeTag = @('SkipCI')
           $config.Run.Exit = $true
 
@@ -101,8 +101,8 @@ jobs:
 
           $config = New-PesterConfiguration
 
-          # Tests location - specify exact file since naming doesn't match *.Tests.ps1 convention
-          $config.Run.Path = 'tests/GitHubActions_tests.ps1'
+          # Tests location - run all test files in the tests directory
+          $config.Run.Path = @('tests/GitHubActions_tests.ps1', 'tests/Action_tests.ps1')
           $config.Filter.ExcludeTag = @('SkipCI')
           $config.Run.Exit = $true
 
