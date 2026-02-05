@@ -120,14 +120,8 @@ jobs:
           path: TestResults/pester-junit.xml
           reporter: java-junit
 
-      - name: Publish coverage summary (Cobertura)
-        uses: irongut/CodeCoverageSummary@v1.3.0
-        if: always()
-        with:
-          filename: TestResults/coverage.cobertura.xml
-          badge: true
-          format: markdown
-          output: both
+      # Note: CodeCoverageSummary is a container action (Linux-only)
+      # Coverage summary is reported by the Ubuntu job
 
       - name: Upload raw XML artifacts
         uses: actions/upload-artifact@v4
