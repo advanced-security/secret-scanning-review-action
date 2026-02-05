@@ -4,32 +4,60 @@ Import-Module GitHubActions
 
 Set-Variable -Scope Script -Option Constant -Name EOL -Value ([System.Environment]::NewLine) -ErrorAction Ignore
 
+# Setup temp files for GitHub Actions environment variables
+# These are required by the GitHubActions module to write environment variables, paths, and outputs
+BeforeAll {
+    $script:TempDir = Join-Path ([System.IO.Path]::GetTempPath()) "GitHubActionsTests_$([System.Guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $script:TempDir -Force | Out-Null
+
+    $env:GITHUB_ENV = Join-Path $script:TempDir 'github_env'
+    $env:GITHUB_PATH = Join-Path $script:TempDir 'github_path'
+    $env:GITHUB_OUTPUT = Join-Path $script:TempDir 'github_output'
+
+    # Create the files
+    New-Item -ItemType File -Path $env:GITHUB_ENV -Force | Out-Null
+    New-Item -ItemType File -Path $env:GITHUB_PATH -Force | Out-Null
+    New-Item -ItemType File -Path $env:GITHUB_OUTPUT -Force | Out-Null
+}
+
+AfterAll {
+    # Cleanup temp files
+    if ($script:TempDir -and (Test-Path $script:TempDir)) {
+        Remove-Item -Path $script:TempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $env:GITHUB_ENV = $null
+    $env:GITHUB_PATH = $null
+    $env:GITHUB_OUTPUT = $null
+}
+
 Describe 'Set-ActionVariable' {
     $testCases = @(
         @{ Name = 'varName1'  ; Value = 'varValue1' }
         @{ Name = 'var name 2'; Value = 'var value 2' }
-        @{ Name = 'var,name;3'; Value = 'var,value;3'
-            Expected = "::set-env name=var%2Cname%3B3::var,value;3$EOL" }
+        @{ Name = 'var,name;3'; Value = 'var,value;3' }
     )
+
+    BeforeEach {
+        # Clear the GITHUB_ENV file and test environment variables before each test
+        Set-Content -Path $env:GITHUB_ENV -Value '' -NoNewline
+        [System.Environment]::SetEnvironmentVariable('varName1', $null)
+        [System.Environment]::SetEnvironmentVariable('var name 2', $null)
+        [System.Environment]::SetEnvironmentVariable('var,name;3', $null)
+    }
     It 'Given valid -Name and -Value, and -SkipLocal' -TestCases $testCases {
-        param($Name, $Value, $Expected)
+        param($Name, $Value)
 
-        if (-not $Expected) {
-            $Expected = "::set-env name=$($Name)::$($Value)$EOL"
-        }
-
-        $output = Set-ActionVariable $Name $Value -SkipLocal
-        $output | Should -Be $Expected
+        Set-ActionVariable $Name $Value -SkipLocal
+        $fileContent = Get-Content -Path $env:GITHUB_ENV -Raw
+        $fileContent | Should -Match ([regex]::Escape("$Name=$Value"))
         [System.Environment]::GetEnvironmentVariable($Name) | Should -BeNullOrEmpty
     }
     It 'Given valid -Name and -Value, and NOT -SkipLocal' -TestCases $testCases {
-        param($Name, $Value, $Expected)
+        param($Name, $Value)
 
-        if (-not $Expected) {
-            $Expected = "::set-env name=$($Name)::$($Value)$EOL"
-        }
-
-        Set-ActionVariable $Name $Value | Should -Be $Expected
+        Set-ActionVariable $Name $Value
+        $fileContent = Get-Content -Path $env:GITHUB_ENV -Raw
+        $fileContent | Should -Match ([regex]::Escape("$Name=$Value"))
         [System.Environment]::GetEnvironmentVariable($Name) | Should -Be $Value
     }
 }
@@ -42,10 +70,17 @@ Describe 'Add-ActionSecretMask' {
 }
 
 Describe 'Add-ActionPath' {
+    BeforeEach {
+        # Clear the GITHUB_PATH file before each test
+        Set-Content -Path $env:GITHUB_PATH -Value '' -NoNewline
+    }
+
     It 'Given a valid -Path and -SkipLocal' {
         $addPath = '/to/some/path'
         $oldPath = [System.Environment]::GetEnvironmentVariable('PATH')
-        Add-ActionPath $addPath -SkipLocal | Should -Be "::add-path::$($addPath)$EOL"
+        Add-ActionPath $addPath -SkipLocal
+        $fileContent = Get-Content -Path $env:GITHUB_PATH -Raw
+        $fileContent | Should -Match ([regex]::Escape($addPath))
         [System.Environment]::GetEnvironmentVariable('PATH') | Should -Be $oldPath
     }
 
@@ -53,7 +88,9 @@ Describe 'Add-ActionPath' {
         $addPath = '/to/some/path'
         $oldPath = [System.Environment]::GetEnvironmentVariable('PATH')
         $newPath = "$($addPath)$([System.IO.Path]::PathSeparator)$($oldPath)"
-        Add-ActionPath $addPath | Should -Be "::add-path::$($addPath)$EOL"
+        Add-ActionPath $addPath
+        $fileContent = Get-Content -Path $env:GITHUB_PATH -Raw
+        $fileContent | Should -Match ([regex]::Escape($addPath))
         [System.Environment]::GetEnvironmentVariable('PATH') | Should -Be $newPath
     }
 }
@@ -118,9 +155,15 @@ Describe 'Get-ActionInputs' {
 }
 
 Describe 'Set-ActionOuput' {
+    BeforeEach {
+        # Clear the GITHUB_OUTPUT file before each test
+        Set-Content -Path $env:GITHUB_OUTPUT -Value '' -NoNewline
+    }
+
     It 'Given a valid -Name and -Value' {
-        $output = Set-ActionOutput 'foo_bar' 'foo bar value'
-        $output | Should -Be "::set-output name=foo_bar::foo bar value$EOL"
+        Set-ActionOutput 'foo_bar' 'foo bar value'
+        $fileContent = Get-Content -Path $env:GITHUB_OUTPUT -Raw
+        $fileContent | Should -Match 'foo_bar=foo bar value'
     }
 }
 
