@@ -14,6 +14,7 @@ When modifying `action.py`:
 - Add docstrings for new functions following the existing style
 - Update module-level comments when adding new functionality
 - Keep parameter documentation consistent between Python and PowerShell versions
+- Use cases for python is generally on self hosted or enterprise server, so validate/document any differences in behavior.
 
 ### Action Configuration
 When modifying `action.yml`:

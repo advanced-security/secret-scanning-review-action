@@ -19,7 +19,9 @@ This Action is also helpful in increasing visibility for secrets that are detect
 
 ## Prerequisites
 
-For private and internal repositories, you must enable [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security).
+1. For private and internal repositories, you must enable [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security).
+
+2. A GitHub Access Token with required permissions must be provided. See [token requirements](#token-requirements) below.
 
 ## Functionality
 
@@ -185,6 +187,9 @@ The `token` input requires a GitHub Access Token with the following permissions:
 
 > [!NOTE]
 > The built-in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) cannot be used due to missing permissions on the `secret-scanning` API. You must generate a token (PAT or GitHub App) with the required permissions, add it as a secret in your repository, and assign the secret to the workflow parameter. See: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
+
+> [!IMPORTANT]
+> When using a custom token (instead of the built-in `GITHUB_TOKEN`), the workflow's `permissions` block only affects the built-in `GITHUB_TOKEN`, not your custom token. If the action fails with permission errors when using a custom token, verify the token itself has the required scopes/permissions listed above – adjusting the workflow's `permissions` block will not help.
 
 > [!WARNING]
 > This token will have `sensitive` data access to return a list of plain text secrets detected in your organization/repository. A detected secret implies anyone with read repository access would have the same level of access to the leaked secret, which should be considered compromised.
