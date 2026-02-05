@@ -1,3 +1,5 @@
+# Secret Scanning Review Action
+
 ![GitHub](https://img.shields.io/badge/github-%23121011.svg?logo=github&logoColor=white)
 ![GitHub Issues](https://img.shields.io/github/issues/advanced-security/secret-scanning-review-action)
 ![GitHub Issues](https://img.shields.io/github/issues-pr/advanced-security/secret-scanning-review-action)
@@ -8,8 +10,6 @@
 [![Latest](https://img.shields.io/github/release/advanced-security/secret-scanning-review-action.svg)](https://github.com/advanced-security/secret-scanning-review-action/releases)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/advanced-security/secret-scanning-review-action/badge)](https://scorecard.dev/viewer/?uri=github.com/advanced-security/secret-scanning-review-action)
 ![GitHub License](https://img.shields.io/github/license/advanced-security/secret-scanning-review-action)
-
-# Secret Scanning Review Action
 
 ## Overview
 
@@ -28,19 +28,20 @@ This Action is also helpful in increasing visibility for secrets that are detect
 ### Commit Annontations
 
 The Action adds a `Warning` annotation to any file in the pull request that has introduced a secret (based on the secret scanning alert's initial commit):
-<img width="854" alt="Secret Scanning Review Workflow File Annotation" src="https://user-images.githubusercontent.com/1760475/184815609-58dd4f31-dc08-445a-a692-3b5d4dacbaae.png">
+![Secret Scanning Review Workflow File Annotation](https://user-images.githubusercontent.com/1760475/184815609-58dd4f31-dc08-445a-a692-3b5d4dacbaae.png)
 
-Setting the workflow [FailOnAlert](#failonalert-environment-variable-ssr_fail_on_alert) configuration value to `true` will change those `Warnings` into `Errors`:
-<img width="854" alt="Secret Scanning Review Workflow File Annotation" src="https://user-images.githubusercontent.com/1760475/185046387-576fb75b-8a68-4640-94bc-9966f1f3b721.png">
+Setting the workflow [`fail-on-alert`](#inputs) configuration value to `true` will change those `Warnings` into `Errors`:
+![Secret Scanning Review Workflow File Annotation](https://user-images.githubusercontent.com/1760475/185046387-576fb75b-8a68-4640-94bc-9966f1f3b721.png)
 
 ### Status Check Failure
 
 By adding `Error` annotations, new secret alerts will fail the workflow's status check, which provides a "trust, but verify" approach to secret scanning:
-<img width="854" alt="Secret Scanning Review Workflow Checks" src="https://user-images.githubusercontent.com/1760475/185046465-1924d71c-3e73-4269-94b9-e5bc283410f4.png">
+![Secret Scanning Review Workflow Checks](https://user-images.githubusercontent.com/1760475/185046465-1924d71c-3e73-4269-94b9-e5bc283410f4.png)
 
 ### Pull Request Job Summary
 
 The Action summarizes all secrets introduced in the pull request in the workflow run summary. The summary table includes:
+
 - **Status**: Whether the check passed (🟡 warning) or failed (🔴 error)
 - **Secret Alert**: Link to the alert details
 - **Secret Type**: The type of secret detected
@@ -50,12 +51,12 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 - **Validity**: The validity status of the secret (`active`, `inactive`, or `unknown`). When available, hover over the status to see the date it was checked.
 - **Location**: Where the secret was found (commit, PR title/body, comment, etc.)
 
-<img width="854" alt="Secret Scanning Review Workflow Checks" src="https://user-images.githubusercontent.com/1760475/204209697-7f13551b-5fea-4bc0-bb6e-f4757a82c946.png">
+![Secret Scanning Review Workflow Checks](https://user-images.githubusercontent.com/1760475/204209697-7f13551b-5fea-4bc0-bb6e-f4757a82c946.png)
 
 ### Pull Request Comments
 
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
-<img width="854" alt="Secret Scanning Review Workflow Checks" src="https://github.com/advanced-security/secret-scanning-review-action/assets/1760475/5b743082-33d2-45d1-bef2-c0bb5d796932">
+![Secret Scanning Review Workflow Checks](https://github.com/advanced-security/secret-scanning-review-action/assets/1760475/5b743082-33d2-45d1-bef2-c0bb5d796932)
 
 ### Step Output of Alert Metadata
 
@@ -82,6 +83,7 @@ An example of how to access this step output in your Actions workflow is shown b
 ```
 
 The `alerts` variable is set to a JSON array with the following fields for each alert detected in the PR:
+
 - `number`: The ID of the alert
 - `secret_type`: The type of secret detected
 - `push_protection_bypassed`: Whether the alert was introduced in a commit that bypassed push protection
@@ -93,6 +95,7 @@ The `alerts` variable is set to a JSON array with the following fields for each 
 - `html_url`: The URL to the alert in the GitHub UI
 
 An example of the `alerts` step output variable is shown below, where two different secrets were introduced in a PR:
+
 ```json
 [
     {
@@ -141,18 +144,19 @@ An example of the `alerts` step output variable is shown below, where two differ
 ```
 
 ## Security Model Considerations
-* To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
 
-* By default, only users with the repository `Admin` role, users with the organization `Security manager` role, organization owners, _and the committer of the secret_, will be able to dismiss the alert.
+- To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
 
-* If you do wish to give broader access to secret scanning alerts in the repository you might consider a [custom repository role configuration](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-peoples-access-to-your-organization-with-roles/about-custom-repository-roles#security). With a custom role you can choose to grant `View secret scanning results` or `Dismiss or reopen secret scanning results` on top of any of the base repository roles.
+- By default, only users with the repository `Admin` role, users with the organization `Security manager` role, organization owners, _and the committer of the secret_, will be able to dismiss the alert.
+
+- If you do wish to give broader access to secret scanning alerts in the repository you might consider a [custom repository role configuration](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-peoples-access-to-your-organization-with-roles/about-custom-repository-roles#security). With a custom role you can choose to grant `View secret scanning results` or `Dismiss or reopen secret scanning results` on top of any of the base repository roles.
 
 ## Configuration Options
 
 ### Inputs
 
 | Input | Required | Description | Default |
-|-------|----------|-------------|---------|
+| ----- | -------- | ----------- | ------- |
 | `token` | **Yes** | GitHub Access Token with required permissions. See [token requirements](#token-requirements) below. | - |
 | `fail-on-alert` | No | Fail the action workflow via non-zero exit code if a matching secret scanning alert is found. | `false` |
 | `fail-on-alert-exclude-closed` | No | Handle failure exit code / annotations as warnings if the alert is found and marked as closed (state: 'resolved'). | `false` |
@@ -168,8 +172,8 @@ An example of the `alerts` step output variable is shown below, where two differ
 
 ### Outputs
 
-| Output | Description |
-|--------|-------------|
+| Output   | Description |
+|----------|-------------|
 | `alerts` | JSON array containing details about the alerts detected in the PR. See [Step Output of Alert Metadata](#step-output-of-alert-metadata) for the JSON schema and example usage. |
 
 ### Token Requirements
@@ -177,10 +181,12 @@ An example of the `alerts` step output variable is shown below, where two differ
 The `token` input requires a GitHub Access Token with the following permissions:
 
 **Classic Tokens:**
+
 - `repo` scope
 - For public repositories: `public_repo` + `security_events` scopes
 
 **Fine-grained Personal Access Tokens:**
+
 - **Read-Only**: [Secret Scanning Alerts](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-secret-scanning-alerts)
 - **Write**: [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests)
   - If `disable-pr-comment: true`, only **Read-Only** [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests) is required (not required for public repositories)
@@ -188,8 +194,12 @@ The `token` input requires a GitHub Access Token with the following permissions:
 > [!NOTE]
 > The built-in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) cannot be used due to missing permissions on the `secret-scanning` API. You must generate a token (PAT or GitHub App) with the required permissions, add it as a secret in your repository, and assign the secret to the workflow parameter. See: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
 
+<!-- -->
+
 > [!IMPORTANT]
 > When using a custom token (instead of the built-in `GITHUB_TOKEN`), the workflow's `permissions` block only affects the built-in `GITHUB_TOKEN`, not your custom token. If the action fails with permission errors when using a custom token, verify the token itself has the required scopes/permissions listed above – adjusting the workflow's `permissions` block will not help.
+
+<!-- -->
 
 > [!WARNING]
 > This token will have `sensitive` data access to return a list of plain text secrets detected in your organization/repository. A detected secret implies anyone with read repository access would have the same level of access to the leaked secret, which should be considered compromised.
@@ -219,7 +229,8 @@ jobs:
 ```
 
 ## Architecture
-* A GitHub [composite action](https://docs.github.com/en/actions/creating-actions/creating-a-composite-action) wrapping a PowerShell script.
+
+- A GitHub [composite action](https://docs.github.com/en/actions/creating-actions/creating-a-composite-action) wrapping a PowerShell script.
 
 ```mermaid
 sequenceDiagram
@@ -262,44 +273,52 @@ sequenceDiagram
 ```
 
 ## Environment Variables
-* Implicit
-  * GITHUB_REPOSITORY - The owner / repository name.
-  * GITHUB_REF - PR merge branch refs/pull/:prNumber/merge
-* Outputs
-  * GITHUB_STEP_SUMMARY - Markdown for each job so that it will be displayed on the summary page of a workflow run (unique for each step in a job)
+
+- Implicit
+  - GITHUB_REPOSITORY - The owner / repository name.
+  - GITHUB_REF - PR merge branch refs/pull/:prNumber/merge
+
+- Outputs
+  - GITHUB_STEP_SUMMARY - Markdown for each job so that it will be displayed on the summary page of a workflow run (unique for each step in a job)
 
 ## Dependencies
-* GitHub Dependencies
-    * GitHub [REST APIs](#rest-apis)
-* Powershell Dependencies
-    * `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
-        * by [@microsoft](https://github.com/microsoft)
-        * NOTE: [Telemetry is collected via Application Insights](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry)
-    * `GitHubActions` ([Gallery](https://www.powershellgallery.com/packages/GitHubActions) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
-        * by [@ebekker](https://github.com/ebekker/)
-* Python Dependencies
-    * `requests` module
+
+- GitHub Dependencies
+  - GitHub [REST APIs](#rest-apis)
+
+- Powershell Dependencies
+  - `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
+    - by [@microsoft](https://github.com/microsoft)
+    - NOTE: [Telemetry is collected via Application Insights](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry)
+  - `GitHubActions` ([Gallery](https://www.powershellgallery.com/packages/GitHubActions) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
+    - by [@ebekker](https://github.com/ebekker/)
+- Python Dependencies
+  - `requests` module
 
 ## REST APIs
-* Pulls
-   * https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#get-a-pull-request
-   * https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request
-   * https://docs.github.com/en/rest/pulls/reviews?apiVersion=2022-11-28#list-reviews-for-a-pull-request
-   * https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request
-* Secret Scanning
-   * https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository
-   * https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert
-* Comments
-  * https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment
-  * https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#update-an-issue-comment
-  * https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#create-an-issue-comment
-  * https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments
+
+- Pulls
+  - <https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#get-a-pull-request>
+  - <https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request>
+  - <https://docs.github.com/en/rest/pulls/reviews?apiVersion=2022-11-28#list-reviews-for-a-pull-request>
+  - <https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request>
+
+- Secret Scanning
+  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository>
+  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert>
+- Comments
+  - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment>
+  - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#update-an-issue-comment>
+  - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#create-an-issue-comment>
+  - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments>
 
 ## FAQ
 
 ### Why are there two runtime options and what's the difference?
+
 The primary difference is the underlying language and the dependencies that are required to be installed on the runner.  The `powershell` runtime is the default and is the most tested.  The `python` runtime is a newer addition for those who may not have powershell installed on their self-hosted runners.
 
 The `python` runtime includes some additional configuration options for enterprise environments:
+
 - **Proxy support**: Configure HTTP/HTTPS proxy settings for on-premises or corporate network environments (`python-http-proxy-url` and `python-https-proxy-url`)
 - **SSL verification control**: Disable SSL verification for testing environments (`python-verify-ssl`)
