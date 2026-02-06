@@ -446,10 +446,17 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             else:
                 location_value = alert_location
             
+            # Format validity with checked date as hover tooltip
+            validity_value = alert.get('validity')
+            if validity_value is None:
+                validity_value = '❌'
+            if alert.get('validity_checked_at'):
+                validity_value = f'[{validity_value}](# "{alert["validity_checked_at"]}")'
+            
             markdown_summary_table_rows += (
                 f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
                 f"{alert['state']} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
-                f"{alert['push_protection_bypassed']} | {location_value} |\n"
+                f"{alert['push_protection_bypassed']} | {validity_value} | {location_value} |\n"
             )
 
     # One line summary of alerts found
@@ -466,8 +473,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     # Build a markdown table of any alerts
     if len(alerts_in_pr) > 0:
         markdown_summary += (
-            "| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Location #️⃣ |\n"
-            "| --- | --- | --- | --- | --- | --- | --- |\n"
+            "| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Validity :white_check_mark: | Location #️⃣ |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
         )
         markdown_summary += markdown_summary_table_rows
     
@@ -507,6 +514,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             "push_protection_bypassed_by": alert["push_protection_bypassed_by"],
             "state": alert["state"],
             "resolution": alert["resolution"],
+            "validity": alert.get("validity"),
+            "validity_checked_at": alert.get("validity_checked_at"),
             "html_url": alert["html_url"]
         })
 

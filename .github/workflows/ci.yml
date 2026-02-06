@@ -2,72 +2,143 @@
 name: CI
 
 on:
-  push
+  push:
+    branches: [ main ]
+  pull_request:
 
-#TODO What permission is need here to attach artifact to workflow run: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#defining-access-for-the-github_token-scopes
-permissions: {}
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
 
 jobs:
 
-  build:
+  pester-ubuntu:
     runs-on: ubuntu-latest
-    permissions:
-      checks: write
     steps:
 
-      - name: checkout
-        uses: actions/checkout@v6.0.2
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: pester tests
-        uses: zyborg/pester-tests-report@bb711b31e93f78f7423086d57f81928325829765 # v1.5.0
+      - name: Run Pester (JUnit results + Cobertura coverage)
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+
+          Install-Module Pester -Force -Scope CurrentUser
+
+          New-Item -ItemType Directory -Force -Path TestResults | Out-Null
+
+          $config = New-PesterConfiguration
+
+          # Tests location
+          $config.Run.Path = 'tests/Action_tests.ps1'
+          $config.Filter.ExcludeTag = @('SkipCI')
+          $config.Run.Exit = $true
+
+          # Emit JUnit XML test results
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputFormat = 'JUnitXml'
+          $config.TestResult.OutputPath = 'TestResults/pester-junit.xml'
+
+          # Emit Cobertura XML coverage for the action scripts
+          $config.CodeCoverage.Enabled = $true
+          $config.CodeCoverage.Path = @('action.ps1', 'ActionHelpers.psm1')
+          $config.CodeCoverage.OutputFormat = 'Cobertura'
+          $config.CodeCoverage.OutputPath = 'TestResults/coverage.cobertura.xml'
+
+          Invoke-Pester -Configuration $config
+
+          # Rename package in coverage report for better display
+          $coverageFile = 'TestResults/coverage.cobertura.xml'
+          if (Test-Path $coverageFile) {
+              $content = Get-Content $coverageFile -Raw
+              $content = $content -replace 'package name=""', 'package name="PowerShell Action"'
+              Set-Content $coverageFile $content
+          }
+
+      - name: Publish test results (JUnit)
+        uses: dorny/test-reporter@v1
+        if: always()
         with:
-          include_paths: ./tests/GitHubActions_tests.ps1
-          exclude_tags: SkipCI
-          report_name: action_base_tests
-          report_title: Action Base Tests
-          gist_name: pwsh-github-action-base_tests.md
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          gist_token: ${{ secrets.GIST_TOKEN }}
-          gist_badge_label: Tests %ExecutedAt%
+          name: Pester Tests (Ubuntu)
+          path: TestResults/pester-junit.xml
+          reporter: java-junit
 
-      # - name: pester tests manually
-      #   shell: pwsh
-      #   run: |
-      #     $neededModules = @(
-      #       'Pester'
-      #       'GitHubActions'
-      #     )
-      #     $neededModules | % {
-      #       if (-not (Get-Module -ListAvailable $_)) {
-      #         Install-Module $_ -Force
-      #       }
-      #     }
-      #     ./tests/GitHubActions_tests.ps1
+      - name: Publish coverage summary (Cobertura)
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        if: always()
+        with:
+          filename: TestResults/coverage.cobertura.xml
+          badge: true
+          format: markdown
+          output: both
 
-      # - name: bundle distributable components
-      #   shell: pwsh
-      #   run: |
-      #     Compress-Archive -DestinationPath ./dist.zip -Path @(
-      #       'js',  'lib'
-      #       'SAMPLE-*', 'LICENSE', 'README.md'
-      #     )
+      - name: Add Coverage PR Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        if: github.event_name == 'pull_request'
+        with:
+          recreate: true
+          path: code-coverage-results.md
+
+      - name: Upload raw XML artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pester-results-ubuntu
+          path: TestResults/
 
   ## For testing out tests on Windows
-  build-on-win:
+  pester-windows:
     runs-on: windows-latest
-    permissions:
-      checks: write
-    continue-on-error: true
     steps:
 
-      - name: checkout
-        uses: actions/checkout@v6.0.2
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: pester tests
-        uses: zyborg/pester-tests-report@bb711b31e93f78f7423086d57f81928325829765 # v1.5.0
+      - name: Run Pester (JUnit results + Cobertura coverage)
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+
+          Install-Module Pester -Force -Scope CurrentUser
+
+          New-Item -ItemType Directory -Force -Path TestResults | Out-Null
+
+          $config = New-PesterConfiguration
+
+          # Tests location
+          $config.Run.Path = 'tests/Action_tests.ps1'
+          $config.Filter.ExcludeTag = @('SkipCI')
+          $config.Run.Exit = $true
+
+          # Emit JUnit XML test results
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputFormat = 'JUnitXml'
+          $config.TestResult.OutputPath = 'TestResults/pester-junit.xml'
+
+          # Emit Cobertura XML coverage for the action scripts
+          $config.CodeCoverage.Enabled = $true
+          $config.CodeCoverage.Path = @('action.ps1', 'ActionHelpers.psm1')
+          $config.CodeCoverage.OutputFormat = 'Cobertura'
+          $config.CodeCoverage.OutputPath = 'TestResults/coverage.cobertura.xml'
+
+          Invoke-Pester -Configuration $config
+
+      - name: Publish test results (JUnit)
+        uses: dorny/test-reporter@v1
+        if: always()
         with:
-          include_paths: ./tests/GitHubActions_tests.ps1
-          exclude_tags: SkipCI
-          report_name: action_base_tests-on-win
-          report_title: Action Base Tests (On Windows)
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          name: Pester Tests (Windows)
+          path: TestResults/pester-junit.xml
+          reporter: java-junit
+
+      # Note: CodeCoverageSummary is a container action (Linux-only)
+      # Coverage summary is reported by the Ubuntu job
+
+      - name: Upload raw XML artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pester-results-windows
+          path: TestResults/
