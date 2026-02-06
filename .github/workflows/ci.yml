@@ -26,14 +26,13 @@ jobs:
           Set-StrictMode -Version Latest
 
           Install-Module Pester -Force -Scope CurrentUser
-          Install-Module GitHubActions -Force -Scope CurrentUser
 
           New-Item -ItemType Directory -Force -Path TestResults | Out-Null
 
           $config = New-PesterConfiguration
 
-          # Tests location - run all test files in the tests directory
-          $config.Run.Path = @('tests/GitHubActions_tests.ps1', 'tests/Action_tests.ps1')
+          # Tests location
+          $config.Run.Path = 'tests/Action_tests.ps1'
           $config.Filter.ExcludeTag = @('SkipCI')
           $config.Run.Exit = $true
 
@@ -103,14 +102,13 @@ jobs:
           Set-StrictMode -Version Latest
 
           Install-Module Pester -Force -Scope CurrentUser
-          Install-Module GitHubActions -Force -Scope CurrentUser
 
           New-Item -ItemType Directory -Force -Path TestResults | Out-Null
 
           $config = New-PesterConfiguration
 
-          # Tests location - run all test files in the tests directory
-          $config.Run.Path = @('tests/GitHubActions_tests.ps1', 'tests/Action_tests.ps1')
+          # Tests location
+          $config.Run.Path = 'tests/Action_tests.ps1'
           $config.Filter.ExcludeTag = @('SkipCI')
           $config.Run.Exit = $true
 
