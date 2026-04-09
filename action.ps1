@@ -403,10 +403,17 @@ foreach ($alert in $alertsInitiatedFromPr) {
     $dismissalStatus = if ($null -ne $dismissalRequest -and $dismissalRequest.status) { $dismissalRequest.status } else { $null }
     $alert | Add-Member -MemberType NoteProperty -Name 'dismissal_request_status' -Value $dismissalStatus -Force
 
+    # Check if alert has dismissal-related fields but the dismissal API returned nothing (likely missing contents:read permission on FGP)
+    $hasDismissalFields = ($null -ne $alert.closure_request_comment) -or ($null -ne $alert.closure_request_reviewer_comment) -or ($null -ne $alert.closure_request_reviewer)
+
     # Format state with dismissal request status as hover tooltip on "dismissal" text
     $stateValue = $alert.state
     if ($dismissalStatus) {
         $stateValue = "$($alert.state) ([dismissal](# `"Dismissal request: $dismissalStatus`"))"
+    }
+    elseif ($hasDismissalFields -and $null -eq $dismissalRequest) {
+        $stateValue = "$($alert.state) (dismissal)"
+        Write-ActionWarning "Alert #$($alert.number) has a dismissal request but the dismissal request API returned 404. Add 'contents: read' permission to your fine-grained token to see dismissal request details."
     }
 
     foreach ($location in $alert.locations) {

@@ -441,10 +441,20 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         dismissal_status = dismissal_request.get('status') if dismissal_request else None
         dismissal_statuses[alert['number']] = dismissal_status
 
+        # Check if alert has dismissal-related fields but the dismissal API returned nothing (likely missing contents:read permission on FGP)
+        has_dismissal_fields = (
+            alert.get('closure_request_comment') is not None
+            or alert.get('closure_request_reviewer_comment') is not None
+            or alert.get('closure_request_reviewer') is not None
+        )
+
         # Format state with dismissal request status as hover tooltip on "dismissal" text
         state_value = alert['state']
         if dismissal_status:
             state_value = f'{alert["state"]} ([dismissal](# "Dismissal request: {dismissal_status}"))'
+        elif has_dismissal_fields and dismissal_request is None:
+            state_value = f'{alert["state"]} (dismissal)'
+            logging.warning(f"Alert #{alert['number']} has a dismissal request but the dismissal request API returned 404. Add 'contents: read' permission to your fine-grained token to see dismissal request details.")
 
         # Need to get locations for the alert
         alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
