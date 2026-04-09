@@ -397,6 +397,18 @@ $markdownSummaryTableRows = $null
 
 foreach ($alert in $alertsInitiatedFromPr) {
     $numSecretsAlertsDetected++
+
+    # Fetch dismissal request for this alert (may return null if feature is not enabled or no request exists)
+    $dismissalRequest = Get-DismissalRequestForAlert -owner $OrganizationName -repo $RepositoryName -alertNumber $alert.number
+    $dismissalState = Get-AlertDismissalState -alert $alert -dismissalRequest $dismissalRequest
+    $dismissalStatus = $dismissalState.dismissalStatus
+    $alert | Add-Member -MemberType NoteProperty -Name 'dismissal_request_status' -Value $dismissalStatus -Force
+
+    $stateValue = $dismissalState.stateValue
+    if ($dismissalState.warning) {
+        Write-ActionWarning $dismissalState.warning
+    }
+
     foreach ($location in $alert.locations) {
         $numSecretsAlertLocationsDetected++
         $alertType = $location.type
@@ -423,7 +435,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
             $validityValue = "[$validityValue](# `"$($alert.validity_checked_at)`")"
         }
 
-        $markdownSummaryTableRows += "| $passFail | :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $($alert.state) | $($null -eq $alert.resolution ? '❌' : $alert.resolution) | $($alert.push_protection_bypassed) | $validityValue | $locationValue | `n"
+        $markdownSummaryTableRows += "| $passFail | :key: [$($alert.number)]($($alert.html_url)) | $($alert.secret_type_display_name) | $stateValue | $($null -eq $alert.resolution ? '❌' : $alert.resolution) | $($alert.push_protection_bypassed) | $validityValue | $locationValue | `n"
     }
 }
 
@@ -505,6 +517,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
         validity                    = $alert.validity
         validity_checked_at         = $alert.validity_checked_at
         html_url                    = $alert.html_url
+        dismissal_request_status    = $alert.dismissal_request_status
     }
 }
 

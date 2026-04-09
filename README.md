@@ -45,18 +45,18 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 - **Status**: Whether the check passed (🟡 warning) or failed (🔴 error)
 - **Secret Alert**: Link to the alert details
 - **Secret Type**: The type of secret detected
-- **State**: Whether the alert is open or resolved
+- **State**: Whether the alert is open or resolved. When a [dismissal request](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests) exists, hover over the state to see the dismissal request status (e.g., `pending`, `approved`, `denied`, `expired`, `completed`, `cancelled`).
 - **Resolution**: How the alert was resolved (if applicable)
 - **Push Bypass**: Whether push protection was bypassed
 - **Validity**: The validity status of the secret (`active`, `inactive`, or `unknown`). When available, hover over the status to see the date it was checked.
 - **Location**: Where the secret was found (commit, PR title/body, comment, etc.)
 
-![Secret Scanning Review Workflow Checks](https://user-images.githubusercontent.com/1760475/204209697-7f13551b-5fea-4bc0-bb6e-f4757a82c946.png)
+![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/102b44ce-6f8d-4aa7-a57d-364673c25dc7)
 
 ### Pull Request Comments
 
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
-![Secret Scanning Review Workflow Checks](https://github.com/advanced-security/secret-scanning-review-action/assets/1760475/5b743082-33d2-45d1-bef2-c0bb5d796932)
+![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/6b08949d-8d60-425e-99a2-ee30bd6735ce)
 
 ### Step Output of Alert Metadata
 
@@ -93,6 +93,7 @@ The `alerts` variable is set to a JSON array with the following fields for each 
 - `validity`: The validity status of the secret (`active`, `inactive`, `unknown`, or null if not yet checked)
 - `validity_checked_at`: The timestamp when the validity was last checked (may be null)
 - `html_url`: The URL to the alert in the GitHub UI
+- `dismissal_request_status`: The status of any dismissal request for the alert (e.g., `pending`, `approved`, `denied`, `expired`, `completed`, `cancelled`, or null if no request exists)
 
 An example of the `alerts` step output variable is shown below, where two different secrets were introduced in a PR:
 
@@ -107,7 +108,8 @@ An example of the `alerts` step output variable is shown below, where two differ
         "resolution": null,
         "validity": "active",
         "validity_checked_at": "2024-01-15T10:30:00Z",
-        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/68"
+        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/68",
+        "dismissal_request_status": null
     },
     {
         "number": 67,
@@ -138,7 +140,8 @@ An example of the `alerts` step output variable is shown below, where two differ
         "resolution": "false_positive",
         "validity": "inactive",
         "validity_checked_at": "2024-01-14T09:15:00Z",
-        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/67"
+        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/67",
+        "dismissal_request_status": "denied"
     }
 ]
 ```
@@ -184,10 +187,12 @@ The `token` input requires a GitHub Access Token with the following permissions:
 
 - `repo` scope
 - For public repositories: `public_repo` + `security_events` scopes
+- The `security_events` scope also enables dismissal request status
 
 **Fine-grained Personal Access Tokens:**
 
 - **Read-Only**: [Secret Scanning Alerts](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-secret-scanning-alerts)
+- **Read-Only**: [Contents](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-contents) _(optional — required for showing dismissal request status in the summary table)_
 - **Write**: [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests)
   - If `disable-pr-comment: true`, only **Read-Only** [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests) is required (not required for public repositories)
 
@@ -306,6 +311,7 @@ sequenceDiagram
 - Secret Scanning
   - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository>
   - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert>
+  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests#get-an-alert-dismissal-request-for-secret-scanning>
 - Comments
   - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment>
   - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#update-an-issue-comment>

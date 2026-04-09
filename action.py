@@ -135,6 +135,22 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, h
             exit(1)
     return all_locations
 
+def get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert_number, http_proxy_url, https_proxy_url, verify_ssl):
+    # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests#get-an-alert-dismissal-request-for-secret-scanning
+    try:
+        url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/dismissal-requests/secret-scanning/{alert_number}"
+        headers = {
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github+json",
+        }
+        proxies = { "http": http_proxy_url, "https": https_proxy_url }
+        response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
+        response.raise_for_status()
+        return response.json()
+    except Exception as err:
+        logging.debug("Unable to retrieve dismissal request for alert %s in %s/%s: %s", alert_number, repo_owner, repo_name, err)
+        return None
+
 def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#get-a-pull-request
     try:
@@ -415,9 +431,31 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     num_secrets_alert_locations_detected = 0
     should_fail_action = False
     markdown_summary_table_rows = ''
+    dismissal_statuses = {}
 
     for alert in alerts_in_pr:
         num_secrets_alerts_detected += 1
+
+        # Fetch dismissal request for this alert (may return None if feature is not enabled or no request exists)
+        dismissal_request = get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
+        dismissal_status = dismissal_request.get('status') if dismissal_request else None
+        dismissal_statuses[alert['number']] = dismissal_status
+
+        # Check if alert has dismissal-related fields but the dismissal API returned nothing (likely missing contents:read permission on FGP)
+        has_dismissal_fields = (
+            alert.get('closure_request_comment') is not None
+            or alert.get('closure_request_reviewer_comment') is not None
+            or alert.get('closure_request_reviewer') is not None
+        )
+
+        # Format state with dismissal request status as hover tooltip on "dismissal" text
+        state_value = alert['state']
+        if dismissal_status:
+            state_value = f'{alert["state"]} ([dismissal](# "Dismissal request: {dismissal_status}"))'
+        elif has_dismissal_fields and not dismissal_status:
+            state_value = f'{alert["state"]} (dismissal)'
+            logging.warning(f"Alert #{alert['number']} has a dismissal request but the dismissal request status could not be retrieved. Ensure your token has 'contents: read' permission for dismissal request details.")
+
         # Need to get locations for the alert
         alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
         for location in alert_locations:
@@ -455,7 +493,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             
             markdown_summary_table_rows += (
                 f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
-                f"{alert['state']} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
+                f"{state_value} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
                 f"{alert['push_protection_bypassed']} | {validity_value} | {location_value} |\n"
             )
 
@@ -516,7 +554,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             "resolution": alert["resolution"],
             "validity": alert.get("validity"),
             "validity_checked_at": alert.get("validity_checked_at"),
-            "html_url": alert["html_url"]
+            "html_url": alert["html_url"],
+            "dismissal_request_status": dismissal_statuses.get(alert["number"])
         })
 
     # convert step_output to valid JSON:
@@ -555,4 +594,4 @@ if __name__ == "__main__":
     parser.add_argument("--DisableWorkflowSummary", type=str2bool, required=False, help="Disable workflow summary")
 
     args = parser.parse_args()
-    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTPS, args.ProxyURLHTTP, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary)
+    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTP, args.ProxyURLHTTPS, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary)

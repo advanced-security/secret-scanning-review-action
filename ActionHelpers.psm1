@@ -319,4 +319,104 @@ function Write-AlertAnnotation {
     }
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation
+<#
+.SYNOPSIS
+Gets the dismissal request for a secret scanning alert.
+
+.DESCRIPTION
+Fetches the dismissal request status for a secret scanning alert using the
+secret scanning alert dismissal requests API. Returns null if no dismissal
+request exists or the API call fails (e.g., feature not enabled).
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER alertNumber
+The secret scanning alert number.
+
+.EXAMPLE
+Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
+Returns the dismissal request object or null.
+#>
+function Get-DismissalRequestForAlert {
+    param(
+        [string]$owner,
+        [string]$repo,
+        [int]$alertNumber
+    )
+
+    # NOTE: Invoke-GHRestMethod does not throw on HTTP errors (e.g. 403/404).
+    # It returns the error response body as a PSObject with a 'message' property.
+    # See: https://github.com/microsoft/PowerShellForGitHub/wiki/Invoke-GHRestMethod
+    # Use -ExtendedResult if you need to inspect the HTTP status code directly.
+    try {
+        $url = "/repos/$owner/$repo/dismissal-requests/secret-scanning/$alertNumber"
+        $response = Invoke-GHRestMethod -Method GET -Uri $url
+        if ($response.message) {
+            return $null
+        }
+        return $response
+    }
+    catch {
+        Write-ActionDebug "Unable to retrieve dismissal request for alert $alertNumber in $owner/${repo}: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+<#
+.SYNOPSIS
+Formats the state column value with dismissal request information.
+
+.DESCRIPTION
+Returns a formatted state string based on the dismissal request status. If a dismissal
+request was fetched successfully, appends a hover tooltip link. If the alert has
+closure_request fields but the dismissal API returned null (404), appends plain
+'(dismissal)' text indicating the token likely lacks 'contents: read' permission.
+
+.PARAMETER alert
+The secret scanning alert object from the API.
+
+.PARAMETER dismissalRequest
+The dismissal request object, or null if the API call failed/returned 404.
+
+.EXAMPLE
+Get-AlertDismissalState -alert $alert -dismissalRequest $response
+Returns @{ stateValue = 'open ([dismissal](# "Dismissal request: pending"))'; warning = $null }
+
+.EXAMPLE
+Get-AlertDismissalState -alert $alertWithClosureFields -dismissalRequest $null
+Returns @{ stateValue = 'open (dismissal)'; warning = 'Alert #2 has a dismissal...' }
+#>
+function Get-AlertDismissalState {
+    param(
+        [PSObject]$alert,
+        $dismissalRequest
+    )
+
+    # Error responses are already filtered out by Get-DismissalRequestForAlert (checks $response.message),
+    # so any non-null dismissalRequest here has a valid status from the API.
+    $dismissalStatus = if ($null -ne $dismissalRequest -and $dismissalRequest.status) { $dismissalRequest.status } else { $null }
+    $hasDismissalFields = ($null -ne $alert.closure_request_comment) -or ($null -ne $alert.closure_request_reviewer_comment) -or ($null -ne $alert.closure_request_reviewer)
+
+    $stateValue = $alert.state
+    $warning = $null
+
+    if ($dismissalStatus) {
+        $stateValue = "$($alert.state) ([dismissal](# `"Dismissal request: $dismissalStatus`"))"
+    }
+    elseif ($hasDismissalFields -and -not $dismissalStatus) {
+        $stateValue = "$($alert.state) (dismissal)"
+        $warning = "Alert #$($alert.number) has a dismissal request but the dismissal request status could not be retrieved. Ensure your token has 'contents: read' permission for dismissal request details."
+    }
+
+    return @{
+        stateValue      = $stateValue
+        dismissalStatus = $dismissalStatus
+        warning         = $warning
+    }
+}
+
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState

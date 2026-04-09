@@ -269,3 +269,149 @@ Describe 'Write-AlertAnnotation' {
         }
     }
 }
+
+Describe 'Get-DismissalRequestForAlert' {
+    It 'Returns null when API call fails (no dismissal request)' {
+        Mock Invoke-GHRestMethod { throw "Not Found" } -ModuleName ActionHelpers
+
+        $result = Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'Returns dismissal request object when API succeeds' {
+        $mockResponse = @{
+            id = 21
+            status = 'denied'
+            requester_comment = 'Test token used in readme'
+        }
+        Mock Invoke-GHRestMethod { return $mockResponse } -ModuleName ActionHelpers
+
+        $result = Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
+        $result | Should -Not -BeNullOrEmpty
+        $result.status | Should -Be 'denied'
+        $result.id | Should -Be 21
+    }
+
+    It 'Returns dismissal request with pending status' {
+        $mockResponse = @{
+            id = 30
+            status = 'pending'
+        }
+        Mock Invoke-GHRestMethod { return $mockResponse } -ModuleName ActionHelpers
+
+        $result = Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 17
+        $result.status | Should -Be 'pending'
+    }
+
+    It 'Calls correct API URL' {
+        Mock Invoke-GHRestMethod { return @{ status = 'approved' } } -ModuleName ActionHelpers
+
+        Get-DismissalRequestForAlert -owner 'myorg' -repo 'myrepo' -alertNumber 99
+
+        Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
+            $Uri -eq '/repos/myorg/myrepo/dismissal-requests/secret-scanning/99' -and $Method -eq 'GET'
+        }
+    }
+
+    It 'Returns null when API returns error response body instead of throwing' {
+        # Invoke-GHRestMethod does not throw on HTTP errors; it returns the error body as a PSObject
+        $errorResponse = @{ message = 'Resource not accessible by personal access token'; documentation_url = 'https://docs.github.com'; status = '403' }
+        Mock Invoke-GHRestMethod { return $errorResponse } -ModuleName ActionHelpers
+
+        $result = Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
+        $result | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-AlertDismissalState' {
+    It 'Returns plain state when no dismissal request and no closure fields' {
+        $alert = [PSCustomObject]@{
+            number = 1
+            state = 'open'
+            closure_request_comment = $null
+            closure_request_reviewer_comment = $null
+            closure_request_reviewer = $null
+        }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $null
+        $result.stateValue | Should -Be 'open'
+        $result.dismissalStatus | Should -BeNullOrEmpty
+        $result.warning | Should -BeNullOrEmpty
+    }
+
+    It 'Returns hover tooltip when dismissal request has status' {
+        $alert = [PSCustomObject]@{
+            number = 2
+            state = 'open'
+            closure_request_comment = 'Test key'
+            closure_request_reviewer_comment = $null
+            closure_request_reviewer = $null
+        }
+        $dismissalRequest = @{ status = 'pending' }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $dismissalRequest
+        $result.stateValue | Should -Match 'open \(\[dismissal\].*Dismissal request: pending'
+        $result.dismissalStatus | Should -Be 'pending'
+        $result.warning | Should -BeNullOrEmpty
+    }
+
+    It 'Returns plain dismissal text and warning when closure fields present but API returned null' {
+        $alert = [PSCustomObject]@{
+            number = 42
+            state = 'open'
+            closure_request_comment = 'This is a test key'
+            closure_request_reviewer_comment = $null
+            closure_request_reviewer = $null
+        }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $null
+        $result.stateValue | Should -Be 'open (dismissal)'
+        $result.dismissalStatus | Should -BeNullOrEmpty
+        $result.warning | Should -BeLike '*Alert #42*contents: read*'
+    }
+
+    It 'Returns plain dismissal text when closure_request_reviewer is present but API returned null' {
+        $alert = [PSCustomObject]@{
+            number = 7
+            state = 'resolved'
+            closure_request_comment = $null
+            closure_request_reviewer_comment = $null
+            closure_request_reviewer = @{ login = 'reviewer1' }
+        }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $null
+        $result.stateValue | Should -Be 'resolved (dismissal)'
+        $result.warning | Should -BeLike '*Alert #7*'
+    }
+
+    It 'Returns plain dismissal text when closure_request_reviewer_comment is present but API returned null' {
+        $alert = [PSCustomObject]@{
+            number = 8
+            state = 'open'
+            closure_request_comment = $null
+            closure_request_reviewer_comment = 'Denied - rotate the secret'
+            closure_request_reviewer = $null
+        }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $null
+        $result.stateValue | Should -Be 'open (dismissal)'
+        $result.warning | Should -BeLike '*Alert #8*'
+    }
+
+    It 'Returns approved status with hover tooltip' {
+        $alert = [PSCustomObject]@{
+            number = 3
+            state = 'resolved'
+            closure_request_comment = 'False positive'
+            closure_request_reviewer_comment = 'Confirmed false positive'
+            closure_request_reviewer = @{ login = 'admin' }
+        }
+        $dismissalRequest = @{ status = 'approved' }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $dismissalRequest
+        $result.stateValue | Should -Match 'resolved \(\[dismissal\].*Dismissal request: approved'
+        $result.dismissalStatus | Should -Be 'approved'
+        $result.warning | Should -BeNullOrEmpty
+    }
+
+}
