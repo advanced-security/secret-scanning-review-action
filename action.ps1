@@ -403,10 +403,10 @@ foreach ($alert in $alertsInitiatedFromPr) {
     $dismissalStatus = if ($null -ne $dismissalRequest -and $dismissalRequest.status) { $dismissalRequest.status } else { $null }
     $alert | Add-Member -MemberType NoteProperty -Name 'dismissal_request_status' -Value $dismissalStatus -Force
 
-    # Format state with dismissal request status as hover tooltip
+    # Format state with dismissal request status as hover tooltip on "dismissal" text
     $stateValue = $alert.state
     if ($dismissalStatus) {
-        $stateValue = "[$($alert.state)](# `"Dismissal request: $dismissalStatus`")"
+        $stateValue = "$($alert.state) ([dismissal](# `"Dismissal request: $dismissalStatus`"))"
     }
 
     foreach ($location in $alert.locations) {

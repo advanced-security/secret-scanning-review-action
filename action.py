@@ -441,10 +441,10 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         dismissal_status = dismissal_request.get('status') if dismissal_request else None
         dismissal_statuses[alert['number']] = dismissal_status
 
-        # Format state with dismissal request status as hover tooltip
+        # Format state with dismissal request status as hover tooltip on "dismissal" text
         state_value = alert['state']
         if dismissal_status:
-            state_value = f'[{alert["state"]}](# "Dismissal request: {dismissal_status}")'
+            state_value = f'{alert["state"]} ([dismissal](# "Dismissal request: {dismissal_status}"))'
 
         # Need to get locations for the alert
         alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
