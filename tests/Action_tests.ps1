@@ -269,3 +269,47 @@ Describe 'Write-AlertAnnotation' {
         }
     }
 }
+
+Describe 'Get-DismissalRequestForAlert' {
+    It 'Returns null when API call fails (no dismissal request)' {
+        Mock Invoke-GHRestMethod { throw "Not Found" } -ModuleName ActionHelpers
+
+        $result = Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'Returns dismissal request object when API succeeds' {
+        $mockResponse = @{
+            id = 21
+            status = 'denied'
+            requester_comment = 'Test token used in readme'
+        }
+        Mock Invoke-GHRestMethod { return $mockResponse } -ModuleName ActionHelpers
+
+        $result = Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
+        $result | Should -Not -BeNullOrEmpty
+        $result.status | Should -Be 'denied'
+        $result.id | Should -Be 21
+    }
+
+    It 'Returns dismissal request with open status' {
+        $mockResponse = @{
+            id = 30
+            status = 'open'
+        }
+        Mock Invoke-GHRestMethod { return $mockResponse } -ModuleName ActionHelpers
+
+        $result = Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 17
+        $result.status | Should -Be 'open'
+    }
+
+    It 'Calls correct API URL' {
+        Mock Invoke-GHRestMethod { return @{ status = 'approved' } } -ModuleName ActionHelpers
+
+        Get-DismissalRequestForAlert -owner 'myorg' -repo 'myrepo' -alertNumber 99
+
+        Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
+            $Uri -eq '/repos/myorg/myrepo/secret-scanning/alerts/99/dismissal-request' -and $Method -eq 'GET'
+        }
+    }
+}

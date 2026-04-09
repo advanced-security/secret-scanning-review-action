@@ -319,4 +319,44 @@ function Write-AlertAnnotation {
     }
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation
+<#
+.SYNOPSIS
+Gets the dismissal request for a secret scanning alert.
+
+.DESCRIPTION
+Fetches the dismissal request status for a secret scanning alert using the
+secret scanning alert dismissal requests API. Returns null if no dismissal
+request exists or the API call fails (e.g., feature not enabled).
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER alertNumber
+The secret scanning alert number.
+
+.EXAMPLE
+Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
+Returns the dismissal request object or null.
+#>
+function Get-DismissalRequestForAlert {
+    param(
+        [string]$owner,
+        [string]$repo,
+        [int]$alertNumber
+    )
+
+    try {
+        $url = "/repos/$owner/$repo/secret-scanning/alerts/$alertNumber/dismissal-request"
+        $response = Invoke-GHRestMethod -Method GET -Uri $url
+        return $response
+    }
+    catch {
+        # Silently return null - no dismissal request exists or feature is not enabled
+        return $null
+    }
+}
+
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation, Get-DismissalRequestForAlert
