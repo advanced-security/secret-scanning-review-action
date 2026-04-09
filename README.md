@@ -45,7 +45,7 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 - **Status**: Whether the check passed (🟡 warning) or failed (🔴 error)
 - **Secret Alert**: Link to the alert details
 - **Secret Type**: The type of secret detected
-- **State**: Whether the alert is open or resolved. When a [dismissal request](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests) exists, hover over the state to see the dismissal request status (e.g., `open`, `approved`, `denied`, `expired`, `completed`, `cancelled`).
+- **State**: Whether the alert is open or resolved. When a [dismissal request](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests) exists, hover over the state to see the dismissal request status (e.g., `pending`, `approved`, `denied`, `expired`, `completed`, `cancelled`).
 - **Resolution**: How the alert was resolved (if applicable)
 - **Push Bypass**: Whether push protection was bypassed
 - **Validity**: The validity status of the secret (`active`, `inactive`, or `unknown`). When available, hover over the status to see the date it was checked.
@@ -94,7 +94,7 @@ The `alerts` variable is set to a JSON array with the following fields for each 
 - `validity`: The validity status of the secret (`active`, `inactive`, `unknown`, or null if not yet checked)
 - `validity_checked_at`: The timestamp when the validity was last checked (may be null)
 - `html_url`: The URL to the alert in the GitHub UI
-- `dismissal_request_status`: The status of any dismissal request for the alert (e.g., `open`, `approved`, `denied`, `expired`, `completed`, `cancelled`, or null if no request exists)
+- `dismissal_request_status`: The status of any dismissal request for the alert (e.g., `pending`, `approved`, `denied`, `expired`, `completed`, `cancelled`, or null if no request exists)
 
 An example of the `alerts` step output variable is shown below, where two different secrets were introduced in a PR:
 

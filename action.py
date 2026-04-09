@@ -138,7 +138,7 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, h
 def get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests#get-an-alert-dismissal-request-for-secret-scanning
     try:
-        url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/secret-scanning/alerts/{alert_number}/dismissal-request"
+        url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/dismissal-requests/secret-scanning/{alert_number}"
         headers = {
             "Authorization": f"Bearer {github_token}",
             "Accept": "application/vnd.github+json",

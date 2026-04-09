@@ -349,7 +349,7 @@ function Get-DismissalRequestForAlert {
     )
 
     try {
-        $url = "/repos/$owner/$repo/secret-scanning/alerts/$alertNumber/dismissal-request"
+        $url = "/repos/$owner/$repo/dismissal-requests/secret-scanning/$alertNumber"
         $response = Invoke-GHRestMethod -Method GET -Uri $url
         return $response
     }

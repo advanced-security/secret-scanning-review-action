@@ -309,7 +309,7 @@ Describe 'Get-DismissalRequestForAlert' {
         Get-DismissalRequestForAlert -owner 'myorg' -repo 'myrepo' -alertNumber 99
 
         Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
-            $Uri -eq '/repos/myorg/myrepo/secret-scanning/alerts/99/dismissal-request' -and $Method -eq 'GET'
+            $Uri -eq '/repos/myorg/myrepo/dismissal-requests/secret-scanning/99' -and $Method -eq 'GET'
         }
     }
 }
