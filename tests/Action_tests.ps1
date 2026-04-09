@@ -292,15 +292,15 @@ Describe 'Get-DismissalRequestForAlert' {
         $result.id | Should -Be 21
     }
 
-    It 'Returns dismissal request with open status' {
+    It 'Returns dismissal request with pending status' {
         $mockResponse = @{
             id = 30
-            status = 'open'
+            status = 'pending'
         }
         Mock Invoke-GHRestMethod { return $mockResponse } -ModuleName ActionHelpers
 
         $result = Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 17
-        $result.status | Should -Be 'open'
+        $result.status | Should -Be 'pending'
     }
 
     It 'Calls correct API URL' {
