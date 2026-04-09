@@ -313,3 +313,95 @@ Describe 'Get-DismissalRequestForAlert' {
         }
     }
 }
+
+Describe 'Get-AlertDismissalState' {
+    It 'Returns plain state when no dismissal request and no closure fields' {
+        $alert = [PSCustomObject]@{
+            number = 1
+            state = 'open'
+            closure_request_comment = $null
+            closure_request_reviewer_comment = $null
+            closure_request_reviewer = $null
+        }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $null
+        $result.stateValue | Should -Be 'open'
+        $result.dismissalStatus | Should -BeNullOrEmpty
+        $result.warning | Should -BeNullOrEmpty
+    }
+
+    It 'Returns hover tooltip when dismissal request has status' {
+        $alert = [PSCustomObject]@{
+            number = 2
+            state = 'open'
+            closure_request_comment = 'Test key'
+            closure_request_reviewer_comment = $null
+            closure_request_reviewer = $null
+        }
+        $dismissalRequest = @{ status = 'pending' }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $dismissalRequest
+        $result.stateValue | Should -Match 'open \(\[dismissal\].*Dismissal request: pending'
+        $result.dismissalStatus | Should -Be 'pending'
+        $result.warning | Should -BeNullOrEmpty
+    }
+
+    It 'Returns plain dismissal text and warning when closure fields present but API returned null' {
+        $alert = [PSCustomObject]@{
+            number = 42
+            state = 'open'
+            closure_request_comment = 'This is a test key'
+            closure_request_reviewer_comment = $null
+            closure_request_reviewer = $null
+        }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $null
+        $result.stateValue | Should -Be 'open (dismissal)'
+        $result.dismissalStatus | Should -BeNullOrEmpty
+        $result.warning | Should -BeLike '*Alert #42*contents: read*'
+    }
+
+    It 'Returns plain dismissal text when closure_request_reviewer is present but API returned null' {
+        $alert = [PSCustomObject]@{
+            number = 7
+            state = 'resolved'
+            closure_request_comment = $null
+            closure_request_reviewer_comment = $null
+            closure_request_reviewer = @{ login = 'reviewer1' }
+        }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $null
+        $result.stateValue | Should -Be 'resolved (dismissal)'
+        $result.warning | Should -BeLike '*Alert #7*'
+    }
+
+    It 'Returns plain dismissal text when closure_request_reviewer_comment is present but API returned null' {
+        $alert = [PSCustomObject]@{
+            number = 8
+            state = 'open'
+            closure_request_comment = $null
+            closure_request_reviewer_comment = 'Denied - rotate the secret'
+            closure_request_reviewer = $null
+        }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $null
+        $result.stateValue | Should -Be 'open (dismissal)'
+        $result.warning | Should -BeLike '*Alert #8*'
+    }
+
+    It 'Returns approved status with hover tooltip' {
+        $alert = [PSCustomObject]@{
+            number = 3
+            state = 'resolved'
+            closure_request_comment = 'False positive'
+            closure_request_reviewer_comment = 'Confirmed false positive'
+            closure_request_reviewer = @{ login = 'admin' }
+        }
+        $dismissalRequest = @{ status = 'approved' }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $dismissalRequest
+        $result.stateValue | Should -Match 'resolved \(\[dismissal\].*Dismissal request: approved'
+        $result.dismissalStatus | Should -Be 'approved'
+        $result.warning | Should -BeNullOrEmpty
+    }
+}

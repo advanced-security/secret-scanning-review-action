@@ -359,4 +359,55 @@ function Get-DismissalRequestForAlert {
     }
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation, Get-DismissalRequestForAlert
+<#
+.SYNOPSIS
+Formats the state column value with dismissal request information.
+
+.DESCRIPTION
+Returns a formatted state string based on the dismissal request status. If a dismissal
+request was fetched successfully, appends a hover tooltip link. If the alert has
+closure_request fields but the dismissal API returned null (404), appends plain
+'(dismissal)' text indicating the token likely lacks 'contents: read' permission.
+
+.PARAMETER alert
+The secret scanning alert object from the API.
+
+.PARAMETER dismissalRequest
+The dismissal request object, or null if the API call failed/returned 404.
+
+.EXAMPLE
+Get-AlertDismissalState -alert $alert -dismissalRequest $response
+Returns @{ stateValue = 'open ([dismissal](# "Dismissal request: pending"))'; warning = $null }
+
+.EXAMPLE
+Get-AlertDismissalState -alert $alertWithClosureFields -dismissalRequest $null
+Returns @{ stateValue = 'open (dismissal)'; warning = 'Alert #2 has a dismissal...' }
+#>
+function Get-AlertDismissalState {
+    param(
+        [PSObject]$alert,
+        $dismissalRequest
+    )
+
+    $dismissalStatus = if ($null -ne $dismissalRequest -and $dismissalRequest.status) { $dismissalRequest.status } else { $null }
+    $hasDismissalFields = ($null -ne $alert.closure_request_comment) -or ($null -ne $alert.closure_request_reviewer_comment) -or ($null -ne $alert.closure_request_reviewer)
+
+    $stateValue = $alert.state
+    $warning = $null
+
+    if ($dismissalStatus) {
+        $stateValue = "$($alert.state) ([dismissal](# `"Dismissal request: $dismissalStatus`"))"
+    }
+    elseif ($hasDismissalFields -and $null -eq $dismissalRequest) {
+        $stateValue = "$($alert.state) (dismissal)"
+        $warning = "Alert #$($alert.number) has a dismissal request but the dismissal request API returned 404. Add 'contents: read' permission to your fine-grained token to see dismissal request details."
+    }
+
+    return @{
+        stateValue      = $stateValue
+        dismissalStatus = $dismissalStatus
+        warning         = $warning
+    }
+}
+
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState

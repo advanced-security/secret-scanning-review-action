@@ -400,20 +400,13 @@ foreach ($alert in $alertsInitiatedFromPr) {
 
     # Fetch dismissal request for this alert (may return null if feature is not enabled or no request exists)
     $dismissalRequest = Get-DismissalRequestForAlert -owner $OrganizationName -repo $RepositoryName -alertNumber $alert.number
-    $dismissalStatus = if ($null -ne $dismissalRequest -and $dismissalRequest.status) { $dismissalRequest.status } else { $null }
+    $dismissalState = Get-AlertDismissalState -alert $alert -dismissalRequest $dismissalRequest
+    $dismissalStatus = $dismissalState.dismissalStatus
     $alert | Add-Member -MemberType NoteProperty -Name 'dismissal_request_status' -Value $dismissalStatus -Force
 
-    # Check if alert has dismissal-related fields but the dismissal API returned nothing (likely missing contents:read permission on FGP)
-    $hasDismissalFields = ($null -ne $alert.closure_request_comment) -or ($null -ne $alert.closure_request_reviewer_comment) -or ($null -ne $alert.closure_request_reviewer)
-
-    # Format state with dismissal request status as hover tooltip on "dismissal" text
-    $stateValue = $alert.state
-    if ($dismissalStatus) {
-        $stateValue = "$($alert.state) ([dismissal](# `"Dismissal request: $dismissalStatus`"))"
-    }
-    elseif ($hasDismissalFields -and $null -eq $dismissalRequest) {
-        $stateValue = "$($alert.state) (dismissal)"
-        Write-ActionWarning "Alert #$($alert.number) has a dismissal request but the dismissal request API returned 404. Add 'contents: read' permission to your fine-grained token to see dismissal request details."
+    $stateValue = $dismissalState.stateValue
+    if ($dismissalState.warning) {
+        Write-ActionWarning $dismissalState.warning
     }
 
     foreach ($location in $alert.locations) {
