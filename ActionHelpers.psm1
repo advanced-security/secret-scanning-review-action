@@ -409,7 +409,7 @@ function Get-AlertDismissalState {
     }
     elseif ($hasDismissalFields -and -not $dismissalStatus) {
         $stateValue = "$($alert.state) (dismissal)"
-        $warning = "Alert #$($alert.number) has a dismissal request but the dismissal request API returned 404. Add 'contents: read' permission to your fine-grained token to see dismissal request details."
+        $warning = "Alert #$($alert.number) has a dismissal request but the dismissal request status could not be retrieved. Ensure your token has 'contents: read' permission for dismissal request details."
     }
 
     return @{

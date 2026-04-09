@@ -454,7 +454,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             state_value = f'{alert["state"]} ([dismissal](# "Dismissal request: {dismissal_status}"))'
         elif has_dismissal_fields and not dismissal_status:
             state_value = f'{alert["state"]} (dismissal)'
-            logging.warning(f"Alert #{alert['number']} has a dismissal request but the dismissal request API returned 404. Add 'contents: read' permission to your fine-grained token to see dismissal request details.")
+            logging.warning(f"Alert #{alert['number']} has a dismissal request but the dismissal request status could not be retrieved. Ensure your token has 'contents: read' permission for dismissal request details.")
 
         # Need to get locations for the alert
         alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
