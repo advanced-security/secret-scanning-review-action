@@ -312,6 +312,15 @@ Describe 'Get-DismissalRequestForAlert' {
             $Uri -eq '/repos/myorg/myrepo/dismissal-requests/secret-scanning/99' -and $Method -eq 'GET'
         }
     }
+
+    It 'Returns null when API returns error response body instead of throwing' {
+        # Invoke-GHRestMethod does not throw on HTTP errors; it returns the error body as a PSObject
+        $errorResponse = @{ message = 'Resource not accessible by personal access token'; documentation_url = 'https://docs.github.com'; status = '403' }
+        Mock Invoke-GHRestMethod { return $errorResponse } -ModuleName ActionHelpers
+
+        $result = Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
+        $result | Should -BeNullOrEmpty
+    }
 }
 
 Describe 'Get-AlertDismissalState' {
@@ -405,20 +414,4 @@ Describe 'Get-AlertDismissalState' {
         $result.warning | Should -BeNullOrEmpty
     }
 
-    It 'Returns plain dismissal text and warning when API returns error object instead of throwing' {
-        $alert = [PSCustomObject]@{
-            number = 42
-            state = 'open'
-            closure_request_comment = 'This is a test key'
-            closure_request_reviewer_comment = $null
-            closure_request_reviewer = $null
-        }
-        # Simulate Invoke-GHRestMethod returning a 403 error body instead of throwing
-        $errorResponse = @{ message = 'Resource not accessible by personal access token'; documentation_url = 'https://docs.github.com'; status = '403' }
-
-        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $errorResponse
-        $result.stateValue | Should -Be 'open (dismissal)'
-        $result.dismissalStatus | Should -BeNullOrEmpty
-        $result.warning | Should -BeLike '*Alert #42*contents: read*'
-    }
 }

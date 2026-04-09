@@ -396,9 +396,9 @@ function Get-AlertDismissalState {
         $dismissalRequest
     )
 
-    $validStatuses = @('pending', 'approved', 'denied', 'expired', 'completed', 'cancelled')
-    $rawStatus = if ($null -ne $dismissalRequest -and $dismissalRequest.status) { $dismissalRequest.status } else { $null }
-    $dismissalStatus = if ($rawStatus -and $validStatuses -contains $rawStatus) { $rawStatus } else { $null }
+    # Error responses are already filtered out by Get-DismissalRequestForAlert (checks $response.message),
+    # so any non-null dismissalRequest here has a valid status from the API.
+    $dismissalStatus = if ($null -ne $dismissalRequest -and $dismissalRequest.status) { $dismissalRequest.status } else { $null }
     $hasDismissalFields = ($null -ne $alert.closure_request_comment) -or ($null -ne $alert.closure_request_reviewer_comment) -or ($null -ne $alert.closure_request_reviewer)
 
     $stateValue = $alert.state
