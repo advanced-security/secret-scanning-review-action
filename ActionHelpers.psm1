@@ -352,6 +352,11 @@ function Get-DismissalRequestForAlert {
         $url = "/repos/$owner/$repo/dismissal-requests/secret-scanning/$alertNumber"
         Write-ActionDebug "Fetching dismissal request for alert #$alertNumber from $url"
         $response = Invoke-GHRestMethod -Method GET -Uri $url
+        Write-ActionDebug "Dismissal request for alert #$alertNumber response type: $($response.GetType().Name), keys: $($response.PSObject.Properties.Name -join ', ')"
+        if ($response.message) {
+            Write-ActionDebug "Dismissal request for alert #$alertNumber returned error message: $($response.message)"
+            return $null
+        }
         Write-ActionDebug "Dismissal request for alert #$alertNumber returned status: $($response.status)"
         return $response
     }
