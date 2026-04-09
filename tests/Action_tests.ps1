@@ -404,4 +404,21 @@ Describe 'Get-AlertDismissalState' {
         $result.dismissalStatus | Should -Be 'approved'
         $result.warning | Should -BeNullOrEmpty
     }
+
+    It 'Returns plain dismissal text and warning when API returns error object instead of throwing' {
+        $alert = [PSCustomObject]@{
+            number = 42
+            state = 'open'
+            closure_request_comment = 'This is a test key'
+            closure_request_reviewer_comment = $null
+            closure_request_reviewer = $null
+        }
+        # Simulate Invoke-GHRestMethod returning a 403 error body instead of throwing
+        $errorResponse = @{ message = 'Resource not accessible by personal access token'; documentation_url = 'https://docs.github.com'; status = '403' }
+
+        $result = Get-AlertDismissalState -alert $alert -dismissalRequest $errorResponse
+        $result.stateValue | Should -Be 'open (dismissal)'
+        $result.dismissalStatus | Should -BeNullOrEmpty
+        $result.warning | Should -BeLike '*Alert #42*contents: read*'
+    }
 }

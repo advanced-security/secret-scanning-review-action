@@ -348,20 +348,19 @@ function Get-DismissalRequestForAlert {
         [int]$alertNumber
     )
 
+    # NOTE: Invoke-GHRestMethod does not throw on HTTP errors (e.g. 403/404).
+    # It returns the error response body as a PSObject with a 'message' property.
+    # See: https://github.com/microsoft/PowerShellForGitHub/wiki/Invoke-GHRestMethod
+    # Use -ExtendedResult if you need to inspect the HTTP status code directly.
     try {
         $url = "/repos/$owner/$repo/dismissal-requests/secret-scanning/$alertNumber"
-        Write-ActionDebug "Fetching dismissal request for alert #$alertNumber from $url"
         $response = Invoke-GHRestMethod -Method GET -Uri $url
-        Write-ActionDebug "Dismissal request for alert #$alertNumber response type: $($response.GetType().Name), keys: $($response.PSObject.Properties.Name -join ', ')"
         if ($response.message) {
-            Write-ActionDebug "Dismissal request for alert #$alertNumber returned error message: $($response.message)"
             return $null
         }
-        Write-ActionDebug "Dismissal request for alert #$alertNumber returned status: $($response.status)"
         return $response
     }
     catch {
-        Write-ActionDebug "Dismissal request for alert #$alertNumber failed: $($_.Exception.Message)"
         return $null
     }
 }
@@ -396,7 +395,9 @@ function Get-AlertDismissalState {
         $dismissalRequest
     )
 
-    $dismissalStatus = if ($null -ne $dismissalRequest -and $dismissalRequest.status) { $dismissalRequest.status } else { $null }
+    $validStatuses = @('pending', 'approved', 'denied', 'expired', 'completed', 'cancelled')
+    $rawStatus = if ($null -ne $dismissalRequest -and $dismissalRequest.status) { $dismissalRequest.status } else { $null }
+    $dismissalStatus = if ($rawStatus -and $validStatuses -contains $rawStatus) { $rawStatus } else { $null }
     $hasDismissalFields = ($null -ne $alert.closure_request_comment) -or ($null -ne $alert.closure_request_reviewer_comment) -or ($null -ne $alert.closure_request_reviewer)
 
     $stateValue = $alert.state
@@ -405,7 +406,7 @@ function Get-AlertDismissalState {
     if ($dismissalStatus) {
         $stateValue = "$($alert.state) ([dismissal](# `"Dismissal request: $dismissalStatus`"))"
     }
-    elseif ($hasDismissalFields -and $null -eq $dismissalRequest) {
+    elseif ($hasDismissalFields -and -not $dismissalStatus) {
         $stateValue = "$($alert.state) (dismissal)"
         $warning = "Alert #$($alert.number) has a dismissal request but the dismissal request API returned 404. Add 'contents: read' permission to your fine-grained token to see dismissal request details."
     }

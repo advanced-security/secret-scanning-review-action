@@ -404,9 +404,6 @@ foreach ($alert in $alertsInitiatedFromPr) {
     $dismissalStatus = $dismissalState.dismissalStatus
     $alert | Add-Member -MemberType NoteProperty -Name 'dismissal_request_status' -Value $dismissalStatus -Force
 
-    Write-ActionDebug "Alert #$($alert.number): closure_request_comment=$($null -ne $alert.closure_request_comment), closure_request_reviewer_comment=$($null -ne $alert.closure_request_reviewer_comment), closure_request_reviewer=$($null -ne $alert.closure_request_reviewer)"
-    Write-ActionDebug "Alert #$($alert.number): dismissalRequest=$($null -ne $dismissalRequest), dismissalStatus=$dismissalStatus, stateValue=$($dismissalState.stateValue)"
-
     $stateValue = $dismissalState.stateValue
     if ($dismissalState.warning) {
         Write-ActionWarning $dismissalState.warning

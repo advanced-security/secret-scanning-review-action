@@ -139,7 +139,6 @@ def get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert_n
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests#get-an-alert-dismissal-request-for-secret-scanning
     try:
         url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/dismissal-requests/secret-scanning/{alert_number}"
-        logging.debug(f"Fetching dismissal request for alert #{alert_number} from {url}")
         headers = {
             "Authorization": f"Bearer {github_token}",
             "Accept": "application/vnd.github+json",
@@ -147,11 +146,8 @@ def get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert_n
         proxies = { "http": http_proxy_url, "https": https_proxy_url }
         response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
         response.raise_for_status()
-        result = response.json()
-        logging.debug(f"Dismissal request for alert #{alert_number} returned status: {result.get('status')}")
-        return result
-    except Exception as e:
-        logging.debug(f"Dismissal request for alert #{alert_number} failed: {e}")
+        return response.json()
+    except Exception:
         return None
 
 def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
@@ -455,7 +451,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         state_value = alert['state']
         if dismissal_status:
             state_value = f'{alert["state"]} ([dismissal](# "Dismissal request: {dismissal_status}"))'
-        elif has_dismissal_fields and dismissal_request is None:
+        elif has_dismissal_fields and not dismissal_status:
             state_value = f'{alert["state"]} (dismissal)'
             logging.warning(f"Alert #{alert['number']} has a dismissal request but the dismissal request API returned 404. Add 'contents: read' permission to your fine-grained token to see dismissal request details.")
 
