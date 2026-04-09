@@ -51,12 +51,13 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 - **Validity**: The validity status of the secret (`active`, `inactive`, or `unknown`). When available, hover over the status to see the date it was checked.
 - **Location**: Where the secret was found (commit, PR title/body, comment, etc.)
 
-![Secret Scanning Review Workflow Checks](https://user-images.githubusercontent.com/1760475/204209697-7f13551b-5fea-4bc0-bb6e-f4757a82c946.png)
+![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/102b44ce-6f8d-4aa7-a57d-364673c25dc7)
+
 
 ### Pull Request Comments
 
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
-![Secret Scanning Review Workflow Checks](https://github.com/advanced-security/secret-scanning-review-action/assets/1760475/5b743082-33d2-45d1-bef2-c0bb5d796932)
+![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/6b08949d-8d60-425e-99a2-ee30bd6735ce)
 
 ### Step Output of Alert Metadata
 
