@@ -53,7 +53,6 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 
 ![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/102b44ce-6f8d-4aa7-a57d-364673c25dc7)
 
-
 ### Pull Request Comments
 
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
