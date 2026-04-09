@@ -350,11 +350,13 @@ function Get-DismissalRequestForAlert {
 
     try {
         $url = "/repos/$owner/$repo/dismissal-requests/secret-scanning/$alertNumber"
+        Write-ActionDebug "Fetching dismissal request for alert #$alertNumber from $url"
         $response = Invoke-GHRestMethod -Method GET -Uri $url
+        Write-ActionDebug "Dismissal request for alert #$alertNumber returned status: $($response.status)"
         return $response
     }
     catch {
-        # Silently return null - no dismissal request exists or feature is not enabled
+        Write-ActionDebug "Dismissal request for alert #$alertNumber failed: $($_.Exception.Message)"
         return $null
     }
 }
