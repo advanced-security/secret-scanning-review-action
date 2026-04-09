@@ -327,7 +327,7 @@ foreach ($alert in $alerts) {
                 }
             }
             'pull_request_comment' {
-                $prComments = Get-PullRequestComments -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber
+                $prComments = Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber
                 # Extract comment ID from the URL (last segment of the path)
                 $commentId = Get-IdFromUrl -url $location.details.pull_request_comment_url
                 foreach ($comment in $prComments) {

@@ -8,10 +8,37 @@ BeforeAll {
     Import-Module (Join-Path $repoRoot 'ActionHelpers.psm1') -Force
 
     # Define mock functions for external dependencies
-    function global:Invoke-GHRestMethod { param($Method, $Uri) }
-    function global:Write-ActionError { param($Message, $File, $Line, $Col) }
-    function global:Write-ActionWarning { param($Message, $File, $Line, $Col) }
-    function global:Write-ActionDebug { param($Message) }
+    function global:Invoke-GHRestMethod { 
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
+        param(
+            $Method, 
+            $Uri
+        )
+    }
+    function global:Write-ActionError { 
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
+        param(
+            $Message, 
+            $File, 
+            $Line, 
+            $Col
+        )
+    }
+    function global:Write-ActionWarning { 
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
+        param(
+            $Message, 
+            $File, 
+            $Line, 
+            $Col
+        )
+    }
+    function global:Write-ActionDebug { 
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
+        param(
+            $Message
+        )
+    }
 }
 
 Describe 'Get-IdFromUrl' {
@@ -181,12 +208,12 @@ Describe 'Get-AlertLocationWithLink' {
     }
 }
 
-Describe 'Get-PullRequestComments' {
+Describe 'Get-PullRequestComment' {
     It 'Returns empty array when API call fails' {
         Mock Invoke-GHRestMethod { throw "API Error" } -ModuleName ActionHelpers
         Mock Write-ActionDebug { } -ModuleName ActionHelpers
 
-        $result = Get-PullRequestComments -owner 'owner' -repo 'repo' -pullNumber 42
+        $result = Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42
         $result | Should -BeNullOrEmpty
     }
 
@@ -197,7 +224,7 @@ Describe 'Get-PullRequestComments' {
         )
         Mock Invoke-GHRestMethod { return $mockComments } -ModuleName ActionHelpers
 
-        $result = Get-PullRequestComments -owner 'owner' -repo 'repo' -pullNumber 42
+        $result = Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42
         $result.Count | Should -Be 2
     }
 }

@@ -7,7 +7,21 @@ This module contains helper functions that can be tested independently.
 Functions that call external APIs (Invoke-GHRestMethod) can be tested with mocks.
 #>
 
-# Helper function to extract ID from URL path
+<#
+.SYNOPSIS
+Extracts the last segment (ID) from a URL path.
+
+.DESCRIPTION
+Takes a URL and returns the last path segment, which is typically an ID.
+Returns null if the URL is empty or invalid.
+
+.PARAMETER url
+The URL string to extract the ID from.
+
+.EXAMPLE
+Get-IdFromUrl -url 'https://api.github.com/repos/owner/repo/pulls/comments/12345'
+Returns: '12345'
+#>
 function Get-IdFromUrl {
     param(
         [string]$url
@@ -21,7 +35,20 @@ function Get-IdFromUrl {
     return ($uri.AbsolutePath -split '/')[-1]
 }
 
-# Helper function to get alert location type description
+<#
+.SYNOPSIS
+Gets a human-readable description of an alert location type.
+
+.DESCRIPTION
+Converts the location type from the GitHub API into a user-friendly description.
+
+.PARAMETER location
+The location object containing a 'type' field and associated details.
+
+.EXAMPLE
+Get-AlertLocationType -location @{ type = 'commit'; details = @{ commit_sha = 'abc123' } }
+Returns: 'Commit SHA abc123'
+#>
 function Get-AlertLocationType {
     param($location)
 
@@ -54,7 +81,21 @@ function Get-AlertLocationType {
     }
 }
 
-# Helper function to get html_url for PR-related locations
+<#
+.SYNOPSIS
+Retrieves the html_url for a GitHub API resource.
+
+.DESCRIPTION
+Makes an API call to get the html_url for a pull request related resource.
+Returns null if the API call fails (e.g., 404 for deleted comments).
+
+.PARAMETER apiUrl
+The GitHub API URL to query.
+
+.EXAMPLE
+Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/42'
+Returns: 'https://github.com/owner/repo/pull/42'
+#>
 function Get-PullRequestHtmlUrl {
     param(
         [string]$apiUrl
@@ -75,7 +116,27 @@ function Get-PullRequestHtmlUrl {
     }
 }
 
-# Helper function to get alert location with hyperlink
+<#
+.SYNOPSIS
+Generates a markdown hyperlink for an alert location.
+
+.DESCRIPTION
+Creates a markdown link to the specific location where a secret was detected.
+Handles various location types including commits, PR titles, comments, and reviews.
+
+.PARAMETER location
+The location object containing type and details of where the secret was found.
+
+.PARAMETER prHtmlUrl
+The HTML URL of the pull request.
+
+.PARAMETER pullRequestNumber
+The pull request number.
+
+.EXAMPLE
+Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42
+Returns: '[abc123d](https://github.com/owner/repo/pull/42/commits/abc123def456789)'
+#>
 function Get-AlertLocationWithLink {
     param(
         $location,
@@ -150,8 +211,28 @@ function Get-AlertLocationWithLink {
     }
 }
 
-# Helper function to get PR comments
-function Get-PullRequestComments {
+<#
+.SYNOPSIS
+Retrieves all comments for a pull request.
+
+.DESCRIPTION
+Fetches all comments from a pull request using pagination.
+Returns an empty array if the API call fails.
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER pullNumber
+The pull request number.
+
+.EXAMPLE
+Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42
+Returns an array of comment objects.
+#>
+function Get-PullRequestComment {
     param(
         [string]$owner,
         [string]$repo,
@@ -182,12 +263,35 @@ function Get-PullRequestComments {
     }
 }
 
-# Helper function to write alert annotations for commit type locations
-# Writes an Action Warning/Error to the message log and creates an annotation associated with the file and line/col number (only for commit type locations)
+<#
+.SYNOPSIS
+Writes an alert annotation for commit-type locations.
+
+.DESCRIPTION
+Creates a GitHub Actions annotation (warning or error) associated with a specific file,
+line, and column. Only processes annotations for commit-type locations.
+
+.PARAMETER Level
+The severity level of the annotation ('Error' or 'Warning').
+
+.PARAMETER Message
+The annotation message to display.
+
+.PARAMETER Location
+The location object containing file path and position details.
+
+.PARAMETER AlertType
+The type of alert location (only 'commit' type will generate annotations).
+
+.EXAMPLE
+Write-AlertAnnotation -Level 'Error' -Message 'Secret found' -Location $location -AlertType 'commit'
+
+.LINK
+https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
+https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
+#>
 function Write-AlertAnnotation {
     param(
-        # Error docs: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-error-message
-        # Warning docs: https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#setting-a-warning-message
         [Parameter(Mandatory = $true)]
         [ValidateSet('Error', 'Warning')]
         [string]$Level,
@@ -215,4 +319,4 @@ function Write-AlertAnnotation {
     }
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComments, Write-AlertAnnotation
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation
