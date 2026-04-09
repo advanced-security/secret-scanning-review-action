@@ -147,7 +147,8 @@ def get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert_n
         response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
         response.raise_for_status()
         return response.json()
-    except Exception:
+    except Exception as err:
+        logging.debug("Unable to retrieve dismissal request for alert %s in %s/%s: %s", alert_number, repo_owner, repo_name, err)
         return None
 
 def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
@@ -593,4 +594,4 @@ if __name__ == "__main__":
     parser.add_argument("--DisableWorkflowSummary", type=str2bool, required=False, help="Disable workflow summary")
 
     args = parser.parse_args()
-    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTPS, args.ProxyURLHTTP, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary)
+    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTP, args.ProxyURLHTTPS, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary)

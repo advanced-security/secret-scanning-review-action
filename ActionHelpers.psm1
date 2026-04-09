@@ -361,6 +361,7 @@ function Get-DismissalRequestForAlert {
         return $response
     }
     catch {
+        Write-Verbose "Unable to retrieve dismissal request for alert $alertNumber in $owner/${repo}: $($_.Exception.Message)"
         return $null
     }
 }
