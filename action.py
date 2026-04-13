@@ -377,50 +377,71 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     
     logging.debug(f"Found {len(alerts)} total alerts after merging and deduplication.")
 
-    # For each alert check if the alert's commit is in the list of PR commits
-    logging.debug("Checking if any alert location commits are in the list of PR commits...")
+    # For each alert check if any of its locations are in the list of PR commits/refs.
+    # When first_location_detected is available AND has_more_locations is false, the alert has only
+    # one location ever — use it directly with no extra API call.
+    # When has_more_locations is true there are additional locations beyond the first; we must call
+    # the locations API to check all of them, because a later location may be the one that is in
+    # this PR (the first detection could be on a different branch/commit entirely).
+    # first_location_detected / has_more_locations docs:
+    # https://github.blog/changelog/2025-06-24-secret-scanning-rest-api-responses-including-first_location_detected-and-has_more_locations-are-now-generally-available/
+    logging.debug("Checking if any alert locations are in the PR commits/refs...")
     alerts_in_pr = []
+    alert_matched_locations = {}  # keyed by alert number; stores all matched locations for the output loop
     alerts_reviewed = 0
     for alert in alerts:
-        alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
+        # Determine which locations to check
+        if alert.get('first_location_detected') and not alert.get('has_more_locations'):
+            # Single location: use first_location_detected directly, no locations API call needed
+            logging.debug(f"Using first_location_detected for alert {alert['number']} (single location, no API call needed)")
+            alert_locations = [alert['first_location_detected']]
+        else:
+            # Multiple locations or first_location_detected not available (GHES fallback):
+            # call the locations API to retrieve all locations and check each one.
+            alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
+
+        # Collect ALL locations that match this PR (consistent with PowerShell behavior)
+        matched_locs = []
         for location in alert_locations:
+            is_match = False
             if location['type'] == 'commit':
                 if location['details']['commit_sha'] in commit_shas:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a commit in the PR.")
-                    alerts_in_pr.append(alert)
-                    break
+                    is_match = True
             elif location['type'] == 'pull_request_title':
                 if location['details']['pull_request_title_url'] == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR title.")
-                    alerts_in_pr.append(alert)
-                    break
+                    is_match = True
             elif location['type'] == 'pull_request_body':
                 if location['details']['pull_request_body_url'] == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR body.")
-                    alerts_in_pr.append(alert)
-                    break
+                    is_match = True
             elif location['type'] == 'pull_request_comment':
                 pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
                 comment_id = location['details']['pull_request_comment_url'].split('/')[-1]
                 for comment in pr_comments:
                     if str(comment['id']) == comment_id:
                         logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR comment.")
-                        alerts_in_pr.append(alert)
+                        is_match = True
                         break
             elif location['type'] == 'pull_request_review':
                 # remove '/reviews/1234567890' from the end of the pull_request_review_url to compare against the PR URL:
                 shortened_pr_review_url = location['details']['pull_request_review_url'].rstrip('/').rsplit('/', 2)[0]
                 if shortened_pr_review_url == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review.")
-                    alerts_in_pr.append(alert)
-                    break
+                    is_match = True
             elif location['type'] == 'pull_request_review_comment':
                 pr_review_comment_url = location['details']['pull_request_review_comment_url']
                 pr_review_comment = get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl)
                 if pr_review_comment['pull_request_url'] == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
-                    alerts_in_pr.append(alert)
-                    break
+                    is_match = True
+            if is_match:
+                matched_locs.append(location)
+
+        if matched_locs:
+            alerts_in_pr.append(alert)
+            alert_matched_locations[alert['number']] = matched_locs
 
         # Increment the counter and log the progress
         alerts_reviewed += 1
@@ -456,9 +477,14 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             state_value = f'{alert["state"]} (dismissal)'
             logging.warning(f"Alert #{alert['number']} has a dismissal request but the dismissal request status could not be retrieved. Ensure your token has 'contents: read' permission for dismissal request details.")
 
-        # Need to get locations for the alert
-        alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
-        for location in alert_locations:
+        # Use the matched locations stored during the PR-check loop (avoids a second locations API call).
+        # Iterate over all matching locations, producing one annotation/summary row per location,
+        # consistent with the PowerShell runtime behavior.
+        matched_locs = alert_matched_locations.get(alert['number'], [])
+        if not matched_locs:
+            logging.warning(f"No matched locations found for alert #{alert['number']}; skipping output.")
+            continue
+        for location in matched_locs:
             num_secrets_alert_locations_detected += 1
             alert_type = location['type']
             alert_location = get_alert_location_type(location)
