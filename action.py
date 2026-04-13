@@ -377,27 +377,39 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     
     logging.debug(f"Found {len(alerts)} total alerts after merging and deduplication.")
 
-    # For each alert check if the alert's commit is in the list of PR commits
-    logging.debug("Checking if any alert location commits are in the list of PR commits...")
+    # For each alert check if the alert's first location is in the list of PR commits/refs.
+    # Use first_location_detected when available — avoids a separate locations API call per alert.
+    # See: https://github.blog/changelog/2025-06-24-secret-scanning-rest-api-responses-including-first_location_detected-and-has_more_locations-are-now-generally-available/
+    logging.debug("Checking if any alert first location is in the list of PR commits...")
     alerts_in_pr = []
+    alert_matched_locations = {}  # keyed by alert number; stores the matched location for use in the output loop
     alerts_reviewed = 0
     for alert in alerts:
-        alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
+        # Use first_location_detected if available, otherwise fall back to the locations API
+        if alert.get('first_location_detected'):
+            logging.debug(f"Using first_location_detected for alert {alert['number']} (no locations API call needed)")
+            alert_locations = [alert['first_location_detected']]
+        else:
+            # Fallback: call the locations API (for older API responses or GHES without first_location_detected)
+            alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
         for location in alert_locations:
             if location['type'] == 'commit':
                 if location['details']['commit_sha'] in commit_shas:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a commit in the PR.")
                     alerts_in_pr.append(alert)
+                    alert_matched_locations[alert['number']] = location
                     break
             elif location['type'] == 'pull_request_title':
                 if location['details']['pull_request_title_url'] == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR title.")
                     alerts_in_pr.append(alert)
+                    alert_matched_locations[alert['number']] = location
                     break
             elif location['type'] == 'pull_request_body':
                 if location['details']['pull_request_body_url'] == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR body.")
                     alerts_in_pr.append(alert)
+                    alert_matched_locations[alert['number']] = location
                     break
             elif location['type'] == 'pull_request_comment':
                 pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
@@ -406,6 +418,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                     if str(comment['id']) == comment_id:
                         logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR comment.")
                         alerts_in_pr.append(alert)
+                        alert_matched_locations[alert['number']] = location
                         break
             elif location['type'] == 'pull_request_review':
                 # remove '/reviews/1234567890' from the end of the pull_request_review_url to compare against the PR URL:
@@ -413,6 +426,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                 if shortened_pr_review_url == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review.")
                     alerts_in_pr.append(alert)
+                    alert_matched_locations[alert['number']] = location
                     break
             elif location['type'] == 'pull_request_review_comment':
                 pr_review_comment_url = location['details']['pull_request_review_comment_url']
@@ -420,6 +434,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                 if pr_review_comment['pull_request_url'] == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
                     alerts_in_pr.append(alert)
+                    alert_matched_locations[alert['number']] = location
                     break
 
         # Increment the counter and log the progress
@@ -456,46 +471,48 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             state_value = f'{alert["state"]} (dismissal)'
             logging.warning(f"Alert #{alert['number']} has a dismissal request but the dismissal request status could not be retrieved. Ensure your token has 'contents: read' permission for dismissal request details.")
 
-        # Need to get locations for the alert
-        alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
-        for location in alert_locations:
-            num_secrets_alert_locations_detected += 1
-            alert_type = location['type']
-            alert_location = get_alert_location_type(location)
-            message = (
-                f"A {'Closed as ' + alert['resolution'] if alert['state'] == 'resolved' else 'New'} Secret Detected in "
-                f"Pull Request #{pull_request_number}. "
-                f"'{alert['secret_type_display_name']}' Secret: {alert['html_url']} Location: {alert_location}"
-            )
-            should_bypass = (alert['state'] == 'resolved') and fail_on_alert_exclude_closed
-            if fail_on_alert and not should_bypass:
-                if alert_type == 'commit':
-                    print(f"::error file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
-                should_fail_action = True
-                pass_fail = "[🔴](# 'Error')"
-            else:
-                if alert_type == 'commit':
-                    print(f"::warning file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
-                pass_fail = "[🟡](# 'Warning')"
-
+        # Use the matched location stored during the PR-check loop (avoids a second locations API call)
+        location = alert_matched_locations.get(alert['number'])
+        if not location:
+            logging.warning(f"No matched location found for alert #{alert['number']}; skipping output.")
+            continue
+        num_secrets_alert_locations_detected += 1
+        alert_type = location['type']
+        alert_location = get_alert_location_type(location)
+        message = (
+            f"A {'Closed as ' + alert['resolution'] if alert['state'] == 'resolved' else 'New'} Secret Detected in "
+            f"Pull Request #{pull_request_number}. "
+            f"'{alert['secret_type_display_name']}' Secret: {alert['html_url']} Location: {alert_location}"
+        )
+        should_bypass = (alert['state'] == 'resolved') and fail_on_alert_exclude_closed
+        if fail_on_alert and not should_bypass:
             if alert_type == 'commit':
-                commit_sha = location['details']['commit_sha'][:7]
-                location_value = f"Commit [{commit_sha}]({pull_request['html_url']}/commits/{location['details']['commit_sha']})"
-            else:
-                location_value = alert_location
-            
-            # Format validity with checked date as hover tooltip
-            validity_value = alert.get('validity')
-            if validity_value is None:
-                validity_value = '❌'
-            if alert.get('validity_checked_at'):
-                validity_value = f'[{validity_value}](# "{alert["validity_checked_at"]}")'
-            
-            markdown_summary_table_rows += (
-                f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
-                f"{state_value} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
-                f"{alert['push_protection_bypassed']} | {validity_value} | {location_value} |\n"
-            )
+                print(f"::error file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
+            should_fail_action = True
+            pass_fail = "[🔴](# 'Error')"
+        else:
+            if alert_type == 'commit':
+                print(f"::warning file={location['details']['path']},line={location['details']['start_line']},col={location['details']['start_column']}::{message}")
+            pass_fail = "[🟡](# 'Warning')"
+
+        if alert_type == 'commit':
+            commit_sha = location['details']['commit_sha'][:7]
+            location_value = f"Commit [{commit_sha}]({pull_request['html_url']}/commits/{location['details']['commit_sha']})"
+        else:
+            location_value = alert_location
+        
+        # Format validity with checked date as hover tooltip
+        validity_value = alert.get('validity')
+        if validity_value is None:
+            validity_value = '❌'
+        if alert.get('validity_checked_at'):
+            validity_value = f'[{validity_value}](# "{alert["validity_checked_at"]}")'
+        
+        markdown_summary_table_rows += (
+            f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
+            f"{state_value} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
+            f"{alert['push_protection_bypassed']} | {validity_value} | {location_value} |\n"
+        )
 
     # One line summary of alerts found
     summary = (

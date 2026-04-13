@@ -269,36 +269,48 @@ catch {
     Write-ActionWarning -Message "Error getting generic secret scanning alerts for '$OrganizationName/$RepositoryName'. This may be expected if generic secrets are not enabled. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
-#for each secret scanning alert, find the initial location of the secret and theh list
+#for each secret scanning alert, find the initial location of the secret and then list
 $alertCount = 0
 $alertsInitiatedFromPr = @()
 foreach ($alert in $alerts) {
-    # Skip alerts that don't have required properties - we need location data to determine if it matches the PR
-    if ($null -eq $alert -or [String]::IsNullOrWhiteSpace($alert.locations_url)) {
-        Write-ActionDebug "Skipping alert without location data (number: $($alert.number), alert_type: $($alert.secret_type_display_name), locations_url: '$($alert.locations_url)')"
+    if ($null -eq $alert) {
+        Write-ActionDebug "Skipping null alert"
         continue
     }
 
-    <# API: GET Secret Scanning Alert List Locations
-    - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert
-    - format: /repos/{owner}/{repo}/secret-scanning/alerts/{alert_number}/locations
-    - returns: 1 "location" object per file where secret detected
-    - note: details.commit_sha - SHA of the commit where the secret was detected
-    #>
-    $repoAlertLocationUrl = [uri]"$($alert.locations_url)?per_page=$perPage"
-    try {
-        $locationsResult = Invoke-GHRestMethod -Method GET -Uri "$($repoAlertLocationUrl.AbsolutePath)$($repoAlertLocationUrl.Query)" -ExtendedResult $true
-        $locations = $locationsResult.result
-        # Get the next page of secret scanning alert locations if there is one
-        while ($locationsResult.nextLink) {
-            $locationsResult = Invoke-GHRestMethod -Method GET -Uri $locationsResult.nextLink -ExtendedResult $true
-            $locations += $locationsResult.result
+    # Use first_location_detected if available — avoids a separate locations API call per alert.
+    # This field is returned by the secret scanning alerts list API as of June 2025:
+    # https://github.blog/changelog/2025-06-24-secret-scanning-rest-api-responses-including-first_location_detected-and-has_more_locations-are-now-generally-available/
+    $locations = $null
+    if ($null -ne $alert.first_location_detected) {
+        Write-ActionDebug "Using first_location_detected for alert #$($alert.number) (no locations API call needed)"
+        $locations = @($alert.first_location_detected)
+    } elseif (-not [String]::IsNullOrWhiteSpace($alert.locations_url)) {
+        # Fallback: call the locations API (for older API responses or GHES without first_location_detected)
+        <# API: GET Secret Scanning Alert List Locations
+        - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert
+        - format: /repos/{owner}/{repo}/secret-scanning/alerts/{alert_number}/locations
+        - returns: 1 "location" object per file where secret detected
+        - note: details.commit_sha - SHA of the commit where the secret was detected
+        #>
+        $repoAlertLocationUrl = [uri]"$($alert.locations_url)?per_page=$perPage"
+        try {
+            $locationsResult = Invoke-GHRestMethod -Method GET -Uri "$($repoAlertLocationUrl.AbsolutePath)$($repoAlertLocationUrl.Query)" -ExtendedResult $true
+            $locations = $locationsResult.result
+            # Get the next page of secret scanning alert locations if there is one
+            while ($locationsResult.nextLink) {
+                $locationsResult = Invoke-GHRestMethod -Method GET -Uri $locationsResult.nextLink -ExtendedResult $true
+                $locations += $locationsResult.result
+            }
+            Write-ActionDebug "Found $($locations.Count) secret scanning alert locations for alert #$($alert.number)"
         }
-        Write-ActionDebug "Found $($locations.Count) secret scanning alert locations for alert #$($alert.number)"
-    }
-    catch {
-        Write-ActionDebug "Alert number: $($alert.number), locations_url: '$($alert.locations_url)'"
-        Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure the 'token' input has proper permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+        catch {
+            Write-ActionDebug "Alert number: $($alert.number), locations_url: '$($alert.locations_url)'"
+            Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert locations.  Ensure the 'token' input has proper permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+        }
+    } else {
+        Write-ActionDebug "Skipping alert without location data (number: $($alert.number), alert_type: $($alert.secret_type_display_name), locations_url: '$($alert.locations_url)')"
+        continue
     }
 
     $locationMatches = @()

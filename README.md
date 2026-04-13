@@ -255,19 +255,14 @@ sequenceDiagram
         Action->>Action: Build PR Commit SHA list
     end
 
-    Action->>API_SECRET: GET Secret Scanning Alerts
+    Action->>API_SECRET: GET Secret Scanning Alerts<br/>(includes first_location_detected)
 
     loop Secret Scanning Alerts
-        Action->>API_SECRET: GET Secret Scanning Alert List Locations
-        loop Secret Scanning Alert Locations
-        Action->>Action:Build List of Alert Initial Location SHAs that are<br/>contained in the PR SHA List (Step 5)
-        end
+        Action->>Action: Check first_location_detected against<br/>PR Commit SHA list / PR refs
     end
 
     loop List of matching PR/Alerts
-      loop List of Locations for matching PR/Alerts
         Action->>PR:Writes an Annotation to the message log<br/>associated with the file and line/col number.<br/>(Error/Warning based on FailOnAlert setting)
-      end
     end
 
     Note right of PR: Annotations are visible<br/>on the PR Files changed rich diff
@@ -309,8 +304,8 @@ sequenceDiagram
   - <https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request>
 
 - Secret Scanning
-  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository>
-  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert>
+  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository> (includes `first_location_detected` and `has_more_locations`)
+  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert> (fallback when `first_location_detected` is unavailable)
   - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests#get-an-alert-dismissal-request-for-secret-scanning>
 - Comments
   - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment>
