@@ -278,15 +278,22 @@ foreach ($alert in $alerts) {
         continue
     }
 
-    # Use first_location_detected if available — avoids a separate locations API call per alert.
-    # This field is returned by the secret scanning alerts list API as of June 2025:
+    # Determine which locations to check for this alert.
+    # When first_location_detected is available AND has_more_locations is false, the alert has only
+    # one location ever detected — use it directly with no extra API call.
+    # When has_more_locations is true there are additional locations beyond the first; we must call
+    # the locations API to check all of them, because a later location may be the one that is in
+    # this PR (the first detection could be on a different branch/commit entirely).
+    # first_location_detected / has_more_locations docs:
     # https://github.blog/changelog/2025-06-24-secret-scanning-rest-api-responses-including-first_location_detected-and-has_more_locations-are-now-generally-available/
     $locations = $null
-    if ($null -ne $alert.first_location_detected) {
-        Write-ActionDebug "Using first_location_detected for alert #$($alert.number) (no locations API call needed)"
+    if ($null -ne $alert.first_location_detected -and -not $alert.has_more_locations) {
+        # Single location: use first_location_detected directly, no locations API call needed
+        Write-ActionDebug "Using first_location_detected for alert #$($alert.number) (single location, no API call needed)"
         $locations = @($alert.first_location_detected)
     } elseif (-not [String]::IsNullOrWhiteSpace($alert.locations_url)) {
-        # Fallback: call the locations API (for older API responses or GHES without first_location_detected)
+        # Multiple locations, or first_location_detected not available (GHES fallback):
+        # call the locations API to retrieve all locations and check each one.
         <# API: GET Secret Scanning Alert List Locations
         - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert
         - format: /repos/{owner}/{repo}/secret-scanning/alerts/{alert_number}/locations
