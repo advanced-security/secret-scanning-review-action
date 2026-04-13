@@ -18,7 +18,7 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run Pester (JUnit results + Cobertura coverage)
         shell: pwsh
@@ -58,7 +58,7 @@ jobs:
           }
 
       - name: Publish test results (JUnit)
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Pester Tests (Ubuntu)
@@ -75,14 +75,14 @@ jobs:
           output: both
 
       - name: Add Coverage PR Comment
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         if: github.event_name == 'pull_request'
         with:
           recreate: true
           path: code-coverage-results.md
 
       - name: Upload raw XML artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: pester-results-ubuntu
@@ -94,7 +94,7 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run Pester (JUnit results + Cobertura coverage)
         shell: pwsh
@@ -126,7 +126,7 @@ jobs:
           Invoke-Pester -Configuration $config
 
       - name: Publish test results (JUnit)
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         if: always()
         with:
           name: Pester Tests (Windows)
@@ -137,7 +137,7 @@ jobs:
       # Coverage summary is reported by the Ubuntu job
 
       - name: Upload raw XML artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: pester-results-windows
