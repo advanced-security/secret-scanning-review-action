@@ -23,6 +23,10 @@ This Action is also helpful in increasing visibility for secrets that are detect
 
 2. A GitHub Access Token with required permissions must be provided. See [token requirements](#token-requirements) below.
 
+## Supported GitHub instances
+
+The action works on github.com, [GitHub Enterprise Cloud with data residency](https://docs.github.com/en/enterprise-cloud@latest/admin/data-residency) (`*.ghe.com`), and GitHub Enterprise Server. The API endpoint is resolved from the runner-provided `GITHUB_API_URL` environment variable, so no additional configuration is required.
+
 ## Functionality
 
 ### Commit Annontations
