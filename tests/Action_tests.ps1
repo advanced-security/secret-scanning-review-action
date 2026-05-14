@@ -227,6 +227,28 @@ Describe 'Get-PullRequestComment' {
         $result = Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42
         $result.Count | Should -Be 2
     }
+
+    It 'Defaults to api.github.com when no apiBaseUrl is provided' {
+        $mockComments = @( @{ id = 1; body = 'Comment 1' } )
+        Mock Invoke-GHRestMethod { return $mockComments } -ModuleName ActionHelpers
+
+        Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42
+
+        Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
+            $Uri -like 'https://api.github.com/repos/owner/repo/issues/42/comments*'
+        }
+    }
+
+    It 'Uses the provided apiBaseUrl (ghe.com support)' {
+        $mockComments = @( @{ id = 1; body = 'Comment 1' } )
+        Mock Invoke-GHRestMethod { return $mockComments } -ModuleName ActionHelpers
+
+        Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 -apiBaseUrl 'https://api.tenant.ghe.com'
+
+        Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
+            $Uri -like 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments*'
+        }
+    }
 }
 
 Describe 'Write-AlertAnnotation' {
