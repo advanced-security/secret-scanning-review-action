@@ -204,6 +204,7 @@ def update_pull_request_comment(github_token, repo_owner, repo_name, pull_reques
             if len(page_comments) < 100:
                 break
             page += 1
+            url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
     except requests.exceptions.RequestException as e:
         raise Exception(f"Error reading comment from '{repo_owner}/{repo_name}' Pull Request#{pull_request_number}. Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:{e.response.status_code} Message:{e})")
     pr_comment_watermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
@@ -255,6 +256,7 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
             if len(page_comments) < 100:
                 break
             page += 1
+            url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
         return comments
     except requests.exceptions.HTTPError as err:
         if response.status_code == 404:
@@ -274,7 +276,7 @@ def _validate_api_url(url):
     """Validate that a URL points to the expected GitHub API host to prevent SSRF token exfiltration."""
     from urllib.parse import urlparse
     parsed = urlparse(url)
-    expected = urlparse(get_api_base_url())
+    expected = urlparse(API_BASE_URL)
     if parsed.scheme != 'https':
         raise ValueError(f"Refusing to send credentials to non-HTTPS URL: {url}")
     if parsed.hostname != expected.hostname:
