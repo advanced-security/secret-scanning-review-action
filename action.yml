@@ -74,8 +74,10 @@ runs:
         id: python-run
         run: |
           pip install -r ${{ github.action_path }}/requirements.txt
-          python ${{ github.action_path }}/action.py --GitHubToken ${{ inputs.token }} --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }} --SkipClosedAlerts ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }} --DisableWorkflowSummary ${{ inputs.disable-workflow-summary || inputs.python-disable-workflow-summary }}
+          python ${{ github.action_path }}/action.py --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }} --SkipClosedAlerts ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }} --DisableWorkflowSummary ${{ inputs.disable-workflow-summary || inputs.python-disable-workflow-summary }}
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ inputs.token }}
 branding:
   icon: "lock"
   color: "gray-dark"

@@ -142,14 +142,24 @@ Describe 'Get-PullRequestHtmlUrl' {
     It 'Returns html_url from API response' {
         Mock Invoke-GHRestMethod { return @{ html_url = 'https://github.com/owner/repo/pull/42' } } -ModuleName ActionHelpers
 
-        $result = Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/42'
+        $result = Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/42' -expectedApiBaseUrl 'https://api.github.com'
         $result | Should -Be 'https://github.com/owner/repo/pull/42'
     }
 
     It 'Returns null when API call fails (404)' {
         Mock Invoke-GHRestMethod { throw "Not Found" } -ModuleName ActionHelpers
 
-        $result = Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/999'
+        $result = Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/999' -expectedApiBaseUrl 'https://api.github.com'
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'Returns null for non-HTTPS URL' {
+        $result = Get-PullRequestHtmlUrl -apiUrl 'http://evil.com/repos/owner/repo/pulls/42' -expectedApiBaseUrl 'https://api.github.com'
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'Returns null when host does not match expected API host' {
+        $result = Get-PullRequestHtmlUrl -apiUrl 'https://evil.com/repos/owner/repo/pulls/42' -expectedApiBaseUrl 'https://api.github.com'
         $result | Should -BeNullOrEmpty
     }
 }

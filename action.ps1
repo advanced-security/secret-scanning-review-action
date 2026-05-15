@@ -97,7 +97,7 @@ if (Get-Module -ListAvailable -Name GitHubActions -ErrorAction SilentlyContinue)
 else {
     #directly to output here before module loaded to support Write-ActionInfo
     Write-Output "GitHubActions module is not installed.  Installing from Gallery..."
-    Install-Module -Name GitHubActions
+    Install-Module -Name GitHubActions -RequiredVersion '1.1.0.2'
 }
 
 # Import helper functions module
@@ -110,7 +110,7 @@ if (Get-Module -ListAvailable -Name PowerShellForGitHub -ErrorAction SilentlyCon
 }
 else {
     Write-ActionInfo "PowerShellForGitHub module is not installed.  Installing from Gallery..."
-    Install-Module -Name PowerShellForGitHub
+    Install-Module -Name PowerShellForGitHub -RequiredVersion '0.17.0'
 
     #Disable Telemetry since we are accessing sensitive apis - https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry
     Set-GitHubConfiguration -DisableTelemetry -SessionOnly
@@ -436,7 +436,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
         }
 
         # Build location value for the markdown table
-        $locationValue = Get-AlertLocationWithLink -location $location -prHtmlUrl $pr.html_url -pullRequestNumber $PullRequestNumber
+        $locationValue = Get-AlertLocationWithLink -location $location -prHtmlUrl $pr.html_url -pullRequestNumber $PullRequestNumber -expectedApiBaseUrl $ApiBaseUrl
 
         # Format validity with checked date as hover tooltip
         $validityValue = $null -eq $alert.validity ? '❌' : $alert.validity
