@@ -1,1 +1,1 @@
-Requests==2.32.4
+Requests==2.33.0
