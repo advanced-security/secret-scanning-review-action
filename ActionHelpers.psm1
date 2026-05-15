@@ -88,20 +88,44 @@ Retrieves the html_url for a GitHub API resource.
 .DESCRIPTION
 Makes an API call to get the html_url for a pull request related resource.
 Returns null if the API call fails (e.g., 404 for deleted comments).
+Validates that the URL host matches the expected API base URL to prevent SSRF.
 
 .PARAMETER apiUrl
 The GitHub API URL to query.
 
+.PARAMETER expectedApiBaseUrl
+The expected GitHub API base URL (e.g., https://api.github.com). Used to validate
+the apiUrl host before sending authenticated requests.
+
 .EXAMPLE
-Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/42'
+Get-PullRequestHtmlUrl -apiUrl 'https://api.github.com/repos/owner/repo/pulls/42' -expectedApiBaseUrl 'https://api.github.com'
 Returns: 'https://github.com/owner/repo/pull/42'
 #>
 function Get-PullRequestHtmlUrl {
     param(
-        [string]$apiUrl
+        [string]$apiUrl,
+        [string]$expectedApiBaseUrl
     )
 
     if (-not $apiUrl) {
+        return $null
+    }
+
+    # Validate URL host matches expected API host to prevent SSRF token exfiltration
+    try {
+        $parsedUrl = [uri]$apiUrl
+        $parsedExpected = [uri]$expectedApiBaseUrl
+        if ($parsedUrl.Scheme -ne 'https') {
+            Write-ActionWarning "Refusing to send credentials to non-HTTPS URL: $apiUrl"
+            return $null
+        }
+        if ($parsedUrl.Host -ne $parsedExpected.Host) {
+            Write-ActionWarning "URL host '$($parsedUrl.Host)' does not match expected API host '$($parsedExpected.Host)'"
+            return $null
+        }
+    }
+    catch {
+        Write-ActionWarning "Invalid URL: $apiUrl"
         return $null
     }
 
@@ -144,7 +168,8 @@ function Get-AlertLocationWithLink {
     param(
         $location,
         $prHtmlUrl,
-        $pullRequestNumber
+        $pullRequestNumber,
+        [string]$expectedApiBaseUrl
     )
 
     if (-not $location.type) {
@@ -159,35 +184,35 @@ function Get-AlertLocationWithLink {
             return "[$commitSha]($prHtmlUrl/commits/$($location.details.commit_sha))"
         }
         'pull_request_title' {
-            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_title_url
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_title_url -expectedApiBaseUrl $expectedApiBaseUrl
             if ($htmlUrl) {
                 return "[$locationType]($htmlUrl)"
             }
             return $locationType
         }
         'pull_request_body' {
-            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_body_url
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_body_url -expectedApiBaseUrl $expectedApiBaseUrl
             if ($htmlUrl) {
                 return "[$locationType]($htmlUrl)"
             }
             return $locationType
         }
         'pull_request_comment' {
-            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_comment_url
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_comment_url -expectedApiBaseUrl $expectedApiBaseUrl
             if ($htmlUrl) {
                 return "[$locationType]($htmlUrl)"
             }
             return $locationType
         }
         'pull_request_review' {
-            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_review_url
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_review_url -expectedApiBaseUrl $expectedApiBaseUrl
             if ($htmlUrl) {
                 return "[$locationType]($htmlUrl)"
             }
             return $locationType
         }
         'pull_request_review_comment' {
-            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_review_comment_url
+            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_review_comment_url -expectedApiBaseUrl $expectedApiBaseUrl
             if ($htmlUrl) {
                 # API call succeeded - use the html_url from the response
                 return "[$locationType]($htmlUrl)"

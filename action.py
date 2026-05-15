@@ -273,8 +273,19 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
         print(f"An error occurred: {err}")
         exit(1)
 
+def _validate_api_url(url):
+    """Validate that a URL points to the expected GitHub API host to prevent SSRF token exfiltration."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    expected = urlparse(get_api_base_url())
+    if parsed.scheme != 'https':
+        raise ValueError(f"Refusing to send credentials to non-HTTPS URL: {url}")
+    if parsed.hostname != expected.hostname:
+        raise ValueError(f"URL host '{parsed.hostname}' does not match expected API host '{expected.hostname}'")
+
 def get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request
+    _validate_api_url(pr_review_comment_url)
     url = pr_review_comment_url
     headers = {
         'Authorization': f'Bearer {github_token}',
@@ -591,7 +602,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
     parser = argparse.ArgumentParser(description="Process input parameters.")
-    parser.add_argument("--GitHubToken", type=str, required=True, help="GitHub Token")
+    parser.add_argument("--GitHubToken", type=str, required=False, default=None, help="GitHub Token (prefer GITHUB_TOKEN env var)")
     parser.add_argument("--FailOnAlert", type=str2bool, required=True, help="Fail on alert")
     parser.add_argument("--FailOnAlertExcludeClosed", type=str2bool, required=True, help="Fail on alert exclude closed")
     parser.add_argument("--DisablePRComment", type=str2bool, required=True, help="Disable PR comment")
