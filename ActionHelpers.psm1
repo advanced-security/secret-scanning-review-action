@@ -106,8 +106,11 @@ function Get-PullRequestHtmlUrl {
     }
 
     try {
+        # Pass the absolute URI through to Invoke-GHRestMethod so the request goes to the host
+        # provided by the API (api.github.com, api.<tenant>.ghe.com, etc.) rather than relying on
+        # PowerShellForGitHub's ApiHostName configuration, which only supports github.com and GHES.
         $uri = [uri]$apiUrl
-        $response = Invoke-GHRestMethod -Method GET -Uri $uri.AbsolutePath
+        $response = Invoke-GHRestMethod -Method GET -Uri $uri.AbsoluteUri
         return $response.html_url
     }
     catch {
@@ -228,6 +231,10 @@ The repository name.
 .PARAMETER pullNumber
 The pull request number.
 
+.PARAMETER apiBaseUrl
+The GitHub API base URL (e.g., https://api.github.com or https://api.<tenant>.ghe.com).
+Defaults to https://api.github.com for backwards compatibility.
+
 .EXAMPLE
 Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42
 Returns an array of comment objects.
@@ -236,13 +243,15 @@ function Get-PullRequestComment {
     param(
         [string]$owner,
         [string]$repo,
-        [int]$pullNumber
+        [int]$pullNumber,
+        [string]$apiBaseUrl = 'https://api.github.com'
     )
 
     $allComments = @()
     $perPage = 100
     $page = 1
-    $commentUrl = "/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
+    $baseUrl = $apiBaseUrl.TrimEnd('/')
+    $commentUrl = "$baseUrl/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
 
     try {
         while ($true) {
@@ -253,7 +262,7 @@ function Get-PullRequestComment {
                 break
             }
             $page++
-            $commentUrl = "/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
+            $commentUrl = "$baseUrl/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
         }
         return $allComments
     }
@@ -337,6 +346,10 @@ The repository name.
 .PARAMETER alertNumber
 The secret scanning alert number.
 
+.PARAMETER apiBaseUrl
+The GitHub API base URL (e.g., https://api.github.com or https://api.<tenant>.ghe.com).
+Defaults to https://api.github.com for backwards compatibility.
+
 .EXAMPLE
 Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
 Returns the dismissal request object or null.
@@ -345,7 +358,8 @@ function Get-DismissalRequestForAlert {
     param(
         [string]$owner,
         [string]$repo,
-        [int]$alertNumber
+        [int]$alertNumber,
+        [string]$apiBaseUrl = 'https://api.github.com'
     )
 
     # NOTE: Invoke-GHRestMethod does not throw on HTTP errors (e.g. 403/404).
@@ -353,7 +367,7 @@ function Get-DismissalRequestForAlert {
     # See: https://github.com/microsoft/PowerShellForGitHub/wiki/Invoke-GHRestMethod
     # Use -ExtendedResult if you need to inspect the HTTP status code directly.
     try {
-        $url = "/repos/$owner/$repo/dismissal-requests/secret-scanning/$alertNumber"
+        $url = "$($apiBaseUrl.TrimEnd('/'))/repos/$owner/$repo/dismissal-requests/secret-scanning/$alertNumber"
         $response = Invoke-GHRestMethod -Method GET -Uri $url
         if ($response.message) {
             return $null
