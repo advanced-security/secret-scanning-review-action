@@ -184,9 +184,8 @@ Write-ActionInfo "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commit
     - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request
     - format: /repos/{owner}/{repo}/pulls/{pull_number}/commits
 #>
-$prCommitsUrl = [uri]$pr.commits_url
 try {
-    $commits = Invoke-GHRestMethod -Method GET -Uri $prCommitsUrl.AbsoluteUri
+    $commits = Invoke-GHRestMethod -Method GET -Uri $pr.commits_url
 }
 catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber commits.  Ensure the 'token' input has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"

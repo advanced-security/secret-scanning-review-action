@@ -162,3 +162,33 @@ jobs:
         with:
           name: pester-results-windows
           path: TestResults/
+
+  # Separate job with minimal permissions for the coverage upload.
+  # Skipped for fork PRs because the coverage upload requires token
+  # permissions that are not available to workflows triggered from forks.
+  upload-coverage:
+    needs: pester-ubuntu
+    if: ${{ !cancelled() && needs.pester-ubuntu.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      code-quality: write
+    steps:
+      # On PRs, check out the head commit (not the merge commit) so coverage
+      # data matches the commit SHA we report to the upload endpoint.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pester-results-ubuntu
+          path: TestResults/
+
+      - name: Upload code coverage
+        uses: actions/upload-code-coverage@v1
+        with:
+          file: TestResults/coverage.cobertura.xml
+          language: PowerShell
+          label: code-coverage/pester
