@@ -143,6 +143,12 @@ $actionRepo = Get-ActionRepo
 $OrganizationName = $actionRepo.Owner
 $RepositoryName = $actionRepo.Repo
 
+# Resolve the GitHub API base URL. GITHUB_API_URL is set by the runner and varies between
+# github.com (https://api.github.com), ghe.com data-residency tenants (https://api.<tenant>.ghe.com),
+# and GHES (https://<hostname>/api/v3). Fall back to public github.com for local/manual runs.
+$ApiBaseUrl = if ([String]::IsNullOrWhiteSpace($env:GITHUB_API_URL)) { 'https://api.github.com' } else { $env:GITHUB_API_URL.TrimEnd('/') }
+Write-ActionDebug "Using GitHub API base URL: $ApiBaseUrl"
+
 #get the pull request number from the GITHUB_REF environment variable
 if ($env:GITHUB_REF -match 'refs/pull/([0-9]+)') {
     $PullRequestNumber = $matches[1]
@@ -159,11 +165,15 @@ Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryNa
     - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#get-a-pull-request
     - format: /repos/{owner}/{repo}/pulls/{pull_number}
 #>
+# Call the API directly with an absolute URL rather than Get-GitHubPullRequest, because
+# PowerShellForGitHub's ApiHostName only supports github.com and GHES (it appends /api/v3
+# for any non-github.com host), which breaks against ghe.com data-residency tenants.
+$prUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/pulls/$PullRequestNumber"
 try {
-    $pr = Get-GitHubPullRequest -PullRequest $PullRequestNumber
-    # Get the API url for comparison purposes (PowerShellForGitHub module may not return the 'url' field)
-    # Construct it from the org/repo/pr number
-    $pr | Add-Member -MemberType NoteProperty -Name 'url' -Value "https://api.github.com/repos/$OrganizationName/$RepositoryName/pulls/$PullRequestNumber" -Force
+    $pr = Invoke-GHRestMethod -Method GET -Uri $prUrl
+    # PowerShellForGitHub may not include the 'url' field on the returned object; ensure it's set
+    # to the API URL we built so location comparisons against the alert API responses succeed.
+    $pr | Add-Member -MemberType NoteProperty -Name 'url' -Value $prUrl -Force
 }
 catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber info.  Ensure the 'token' input has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
@@ -176,7 +186,7 @@ Write-ActionInfo "PR#$PullRequestNumber '$($pr.Title)' has $($pr.commits) commit
 #>
 $prCommitsUrl = [uri]$pr.commits_url
 try {
-    $commits = Invoke-GHRestMethod -Method GET -Uri $prCommitsUrl.AbsolutePath
+    $commits = Invoke-GHRestMethod -Method GET -Uri $prCommitsUrl.AbsoluteUri
 }
 catch {
     Set-ActionFailed -Message "Error getting '$OrganizationName/$RepositoryName' PR#$PullRequestNumber commits.  Ensure the 'token' input has proper repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
@@ -201,7 +211,7 @@ Write-ActionInfo "PR#$PullRequestNumber Commit SHA list: $($prCommitShaList -joi
 $perPage = 100
 
 # First call: Get default provider-based secret scanning alerts
-$repoAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage"
+$repoAlertsUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage"
 if ($SkipClosedAlerts) {
     $repoAlertsUrl += "&state=open"
 }
@@ -238,7 +248,7 @@ catch {
 }
 
 # Second call: Get generic secret scanning alerts (non-provider patterns and copilot patterns)
-$genericAlertsUrl = "/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage&secret_type=$GENERIC_SECRET_TYPES"
+$genericAlertsUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/secret-scanning/alerts?per_page=$perPage&secret_type=$GENERIC_SECRET_TYPES"
 if ($SkipClosedAlerts) {
     $genericAlertsUrl += "&state=open"
 }
@@ -287,7 +297,7 @@ foreach ($alert in $alerts) {
     #>
     $repoAlertLocationUrl = [uri]"$($alert.locations_url)?per_page=$perPage"
     try {
-        $locationsResult = Invoke-GHRestMethod -Method GET -Uri "$($repoAlertLocationUrl.AbsolutePath)$($repoAlertLocationUrl.Query)" -ExtendedResult $true
+        $locationsResult = Invoke-GHRestMethod -Method GET -Uri $repoAlertLocationUrl.AbsoluteUri -ExtendedResult $true
         $locations = $locationsResult.result
         # Get the next page of secret scanning alert locations if there is one
         while ($locationsResult.nextLink) {
@@ -327,7 +337,7 @@ foreach ($alert in $alerts) {
                 }
             }
             'pull_request_comment' {
-                $prComments = Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber
+                $prComments = Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl
                 # Extract comment ID from the URL (last segment of the path)
                 $commentId = Get-IdFromUrl -url $location.details.pull_request_comment_url
                 foreach ($comment in $prComments) {
@@ -399,7 +409,7 @@ foreach ($alert in $alertsInitiatedFromPr) {
     $numSecretsAlertsDetected++
 
     # Fetch dismissal request for this alert (may return null if feature is not enabled or no request exists)
-    $dismissalRequest = Get-DismissalRequestForAlert -owner $OrganizationName -repo $RepositoryName -alertNumber $alert.number
+    $dismissalRequest = Get-DismissalRequestForAlert -owner $OrganizationName -repo $RepositoryName -alertNumber $alert.number -apiBaseUrl $ApiBaseUrl
     $dismissalState = Get-AlertDismissalState -alert $alert -dismissalRequest $dismissalRequest
     $dismissalStatus = $dismissalState.dismissalStatus
     $alert | Add-Member -MemberType NoteProperty -Name 'dismissal_request_status' -Value $dismissalStatus -Force
@@ -463,7 +473,7 @@ if (!$DisablePRComment -and $alertsInitiatedFromPr.Count -gt 0) {
     - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment
     - format: /repos/{owner}/{repo}/issues/{pull_number}/comments
     #>
-    $commentUrl = "/repos/$OrganizationName/$RepositoryName/issues/$PullRequestNumber/comments?per_page=100"
+    $commentUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/issues/$PullRequestNumber/comments?per_page=100"
     try {
         $comments = Invoke-GHRestMethod -Method GET -Uri $commentUrl
     }

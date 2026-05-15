@@ -11,6 +11,10 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/advanced-security/secret-scanning-review-action/badge)](https://scorecard.dev/viewer/?uri=github.com/advanced-security/secret-scanning-review-action)
 ![GitHub License](https://img.shields.io/github/license/advanced-security/secret-scanning-review-action)
 
+[![GitHub.com](https://img.shields.io/badge/Supported%20on-GitHub.com-0969da)](https://github.com)
+[![GHEC with data residency](https://img.shields.io/badge/Supported%20on-GitHub%20Enterprise%20Cloud%20with%20data%20residency-0969da)](https://docs.github.com/en/enterprise-cloud@latest/admin/data-residency)
+[![GHES](https://img.shields.io/badge/Supported%20on-GitHub%20Enterprise%20Server-0969da)](https://docs.github.com/en/enterprise-server@latest)
+
 ## Overview
 
 This Action adds more awareness, and optionally fails a pull request status check, when a secret scanning alert is introduced in commits, pull request title, description, comments, reviews, or review comments as part of a pull request. This makes it harder for peer reviewers to miss the alert and makes it easier to enforce that the alert is resolved before the pull request is merged (when combined with [repository rulesets](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
@@ -22,6 +26,10 @@ This Action is also helpful in increasing visibility for secrets that are detect
 1. For private and internal repositories, you must enable [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security).
 
 2. A GitHub Access Token with required permissions must be provided. See [token requirements](#token-requirements) below.
+
+## Supported GitHub instances
+
+The action works on github.com, [GitHub Enterprise Cloud with data residency](https://docs.github.com/en/enterprise-cloud@latest/admin/data-residency) (`*.ghe.com`), and GitHub Enterprise Server. The API endpoint is resolved from the runner-provided `GITHUB_API_URL` environment variable, so no additional configuration is required.
 
 ## Functionality
 
