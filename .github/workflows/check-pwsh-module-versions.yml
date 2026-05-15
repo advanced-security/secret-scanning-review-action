@@ -1,0 +1,77 @@
+name: Check PowerShell Module Versions
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9:00 UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  check-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for newer PSGallery module versions
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Extract pinned versions from action.ps1
+          $actionContent = Get-Content -Path action.ps1 -Raw
+
+          $modules = @(
+            @{ Name = 'GitHubActions';          Pattern = "Install-Module\s+-Name\s+GitHubActions\s+-RequiredVersion\s+'([^']+)'" },
+            @{ Name = 'PowerShellForGitHub';    Pattern = "Install-Module\s+-Name\s+PowerShellForGitHub\s+-RequiredVersion\s+'([^']+)'" }
+          )
+
+          $outdated = @()
+
+          foreach ($mod in $modules) {
+            if ($actionContent -match $mod.Pattern) {
+              $pinnedVersion = $Matches[1]
+            } else {
+              Write-Warning "Could not find pinned version for $($mod.Name) in action.ps1"
+              continue
+            }
+
+            $latest = (Find-Module -Name $mod.Name -Repository PSGallery).Version.ToString()
+
+            Write-Output "$($mod.Name): pinned=$pinnedVersion latest=$latest"
+
+            if ($pinnedVersion -ne $latest) {
+              $outdated += @{
+                Name           = $mod.Name
+                PinnedVersion  = $pinnedVersion
+                LatestVersion  = $latest
+              }
+            }
+          }
+
+          if ($outdated.Count -eq 0) {
+            Write-Output "All pinned PowerShell modules are up to date."
+            exit 0
+          }
+
+          # Build issue body
+          $title = "chore(deps): update pinned PowerShell module versions"
+
+          $body = "The weekly version check found newer PowerShell Gallery modules than what is pinned in ``action.ps1``.`n`n"
+          $body += "| Module | Pinned | Latest |`n"
+          $body += "|--------|--------|--------|`n"
+          foreach ($m in $outdated) {
+            $body += "| $($m.Name) | ``$($m.PinnedVersion)`` | ``$($m.LatestVersion)`` |`n"
+          }
+          $body += "`n**Action required:** Review the changelogs and update the ``-RequiredVersion`` pins in ``action.ps1``."
+
+          # Check if an open issue with this title already exists
+          $existing = gh issue list --state open --search "in:title $title" --json number --jq '.[0].number' 2>$null
+          if ($existing) {
+            Write-Output "Open issue #$existing already exists — skipping."
+            exit 0
+          }
+
+          gh issue create --title $title --body $body --label "dependencies"
