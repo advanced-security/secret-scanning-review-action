@@ -103,10 +103,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest requests
+          pip install pytest pytest-cov requests
 
-      - name: Run pytest
-        run: pytest tests/test_action.py -v
+      - name: Run pytest with coverage
+        run: |
+          mkdir -p TestResults
+          pytest tests/test_action.py -v --cov=action --cov-report=xml:TestResults/coverage.pytest.xml
+
+      - name: Upload raw XML artifacts
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: pytest-results-ubuntu
+          path: TestResults/
 
   ## For testing out tests on Windows
   pester-windows:
@@ -167,8 +176,10 @@ jobs:
   # Skipped for fork PRs because the coverage upload requires token
   # permissions that are not available to workflows triggered from forks.
   upload-coverage:
-    needs: pester-ubuntu
-    if: ${{ !cancelled() && needs.pester-ubuntu.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    needs:
+      - pester-ubuntu
+      - pytest
+    if: ${{ !cancelled() && needs.pester-ubuntu.result == 'success' && needs.pytest.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -184,11 +195,24 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: pester-results-ubuntu
-          path: TestResults/
+          path: TestResults/pester
 
-      - name: Upload code coverage
+      - name: Download Python coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pytest-results-ubuntu
+          path: TestResults/pytest
+
+      - name: Upload PowerShell code coverage
         uses: actions/upload-code-coverage@v1
         with:
-          file: TestResults/coverage.cobertura.xml
+          file: TestResults/pester/coverage.cobertura.xml
           language: PowerShell
           label: code-coverage/pester
+
+      - name: Upload Python code coverage
+        uses: actions/upload-code-coverage@v1
+        with:
+          file: TestResults/pytest/coverage.pytest.xml
+          language: Python
+          label: code-coverage/pytest
