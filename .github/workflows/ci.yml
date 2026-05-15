@@ -144,7 +144,8 @@ jobs:
           path: TestResults/
 
   # Separate job with minimal permissions for the coverage upload.
-  # Skipped for fork PRs (artifact won't have been uploaded).
+  # Skipped for fork PRs because the coverage upload requires token
+  # permissions that are not available to workflows triggered from forks.
   upload-coverage:
     needs: pester-ubuntu
     if: ${{ !cancelled() && needs.pester-ubuntu.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
