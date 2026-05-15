@@ -14,6 +14,12 @@ from datetime import datetime, timezone
 # Includes non-provider patterns and copilot patterns
 GENERIC_SECRET_TYPES = "password,ec_private_key,generic_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_url,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key"
 
+def get_api_base_url():
+    # GITHUB_API_URL is provided by the runner and points to the correct API host for the
+    # current GitHub instance (github.com, ghe.com data-residency tenants, or GHES).
+    # Fall back to public github.com for local/manual runs outside a workflow.
+    return os.environ.get('GITHUB_API_URL', 'https://api.github.com').rstrip('/')
+
 def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-commits-on-a-pull-request
     all_commits = []
@@ -21,7 +27,7 @@ def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number,
     page = 1
     while True:
         try:
-            url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}/commits?per_page={per_page}&page={page}"
+            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}/commits?per_page={per_page}&page={page}"
             headers = {
                 "Authorization": f"Bearer {github_token}",
                 "Accept": "application/vnd.github+json",
@@ -56,7 +62,7 @@ def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, htt
     page = 1
     while True:
         try:
-            url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/secret-scanning/alerts?per_page={per_page}&page={page}"
+            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/secret-scanning/alerts?per_page={per_page}&page={page}"
             if skip_closed_alerts:
                 url += "&state=open"
             if secret_type is not None:
@@ -101,7 +107,7 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, h
     page = 1
     while True:
         try:
-            url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/secret-scanning/alerts/{alert_number}/locations?per_page={per_page}&page={page}"
+            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/secret-scanning/alerts/{alert_number}/locations?per_page={per_page}&page={page}"
             headers = {
                 "Authorization": f"Bearer {github_token}",
                 "Accept": "application/vnd.github+json",
@@ -135,10 +141,26 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, h
             exit(1)
     return all_locations
 
+def get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert_number, http_proxy_url, https_proxy_url, verify_ssl):
+    # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests#get-an-alert-dismissal-request-for-secret-scanning
+    try:
+        url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/dismissal-requests/secret-scanning/{alert_number}"
+        headers = {
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github+json",
+        }
+        proxies = { "http": http_proxy_url, "https": https_proxy_url }
+        response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
+        response.raise_for_status()
+        return response.json()
+    except Exception as err:
+        logging.debug("Unable to retrieve dismissal request for alert %s in %s/%s: %s", alert_number, repo_owner, repo_name, err)
+        return None
+
 def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#get-a-pull-request
     try:
-        url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}"
+        url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}"
         headers = {
             "Authorization": f"Bearer {github_token}",
             "Accept": "application/vnd.github+json",
@@ -166,7 +188,7 @@ def update_pull_request_comment(github_token, repo_owner, repo_name, pull_reques
     comments = []
     per_page = 100
     page = 1
-    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
+    url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
     headers = {
         'Authorization': f'Bearer {github_token}',
         'Accept': 'application/vnd.github+json'
@@ -178,11 +200,12 @@ def update_pull_request_comment(github_token, repo_owner, repo_name, pull_reques
             response.raise_for_status()
             page_comments = response.json()
             comments.extend(page_comments)
-            
+
             # Check if there are more pages
             if len(page_comments) < 100:
                 break
             page += 1
+            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
     except requests.exceptions.RequestException as e:
         raise Exception(f"Error reading comment from '{repo_owner}/{repo_name}' Pull Request#{pull_request_number}. Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:{e.response.status_code} Message:{e})")
     pr_comment_watermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
@@ -217,7 +240,7 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
     comments = []
     per_page = 100
     page = 1
-    url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
+    url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
     headers = {
         'Authorization': f'Bearer {github_token}',
         'Accept': 'application/vnd.github+json'
@@ -229,11 +252,12 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
             response.raise_for_status()
             page_comments = response.json()
             comments.extend(page_comments)
-            
+
             # Check if there are more pages
             if len(page_comments) < 100:
                 break
             page += 1
+            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
         return comments
     except requests.exceptions.HTTPError as err:
         if response.status_code == 404:
@@ -249,8 +273,19 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
         print(f"An error occurred: {err}")
         exit(1)
 
+def _validate_api_url(url):
+    """Validate that a URL points to the expected GitHub API host to prevent SSRF token exfiltration."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    expected = urlparse(get_api_base_url())
+    if parsed.scheme != 'https':
+        raise ValueError(f"Refusing to send credentials to non-HTTPS URL: {url}")
+    if parsed.hostname != expected.hostname:
+        raise ValueError(f"URL host '{parsed.hostname}' does not match expected API host '{expected.hostname}'")
+
 def get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request
+    _validate_api_url(pr_review_comment_url)
     url = pr_review_comment_url
     headers = {
         'Authorization': f'Bearer {github_token}',
@@ -415,9 +450,31 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     num_secrets_alert_locations_detected = 0
     should_fail_action = False
     markdown_summary_table_rows = ''
+    dismissal_statuses = {}
 
     for alert in alerts_in_pr:
         num_secrets_alerts_detected += 1
+
+        # Fetch dismissal request for this alert (may return None if feature is not enabled or no request exists)
+        dismissal_request = get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
+        dismissal_status = dismissal_request.get('status') if dismissal_request else None
+        dismissal_statuses[alert['number']] = dismissal_status
+
+        # Check if alert has dismissal-related fields but the dismissal API returned nothing (likely missing contents:read permission on FGP)
+        has_dismissal_fields = (
+            alert.get('closure_request_comment') is not None
+            or alert.get('closure_request_reviewer_comment') is not None
+            or alert.get('closure_request_reviewer') is not None
+        )
+
+        # Format state with dismissal request status as hover tooltip on "dismissal" text
+        state_value = alert['state']
+        if dismissal_status:
+            state_value = f'{alert["state"]} ([dismissal](# "Dismissal request: {dismissal_status}"))'
+        elif has_dismissal_fields and not dismissal_status:
+            state_value = f'{alert["state"]} (dismissal)'
+            logging.warning(f"Alert #{alert['number']} has a dismissal request but the dismissal request status could not be retrieved. Ensure your token has 'contents: read' permission for dismissal request details.")
+
         # Need to get locations for the alert
         alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
         for location in alert_locations:
@@ -446,10 +503,17 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             else:
                 location_value = alert_location
             
+            # Format validity with checked date as hover tooltip
+            validity_value = alert.get('validity')
+            if validity_value is None:
+                validity_value = '❌'
+            if alert.get('validity_checked_at'):
+                validity_value = f'[{validity_value}](# "{alert["validity_checked_at"]}")'
+            
             markdown_summary_table_rows += (
                 f"| {pass_fail} | :key: [{alert['number']}]({alert['html_url']}) | {alert['secret_type_display_name']} | "
-                f"{alert['state']} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
-                f"{alert['push_protection_bypassed']} | {location_value} |\n"
+                f"{state_value} | {'❌' if alert['resolution'] is None else alert['resolution']} | "
+                f"{alert['push_protection_bypassed']} | {validity_value} | {location_value} |\n"
             )
 
     # One line summary of alerts found
@@ -466,8 +530,8 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     # Build a markdown table of any alerts
     if len(alerts_in_pr) > 0:
         markdown_summary += (
-            "| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Location #️⃣ |\n"
-            "| --- | --- | --- | --- | --- | --- | --- |\n"
+            "| Status 🚦 | Secret Alert 🚨 | Secret Type 𝌎 | State :question: | Resolution :checkered_flag: | Push Bypass 👋 | Validity :white_check_mark: | Location #️⃣ |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- |\n"
         )
         markdown_summary += markdown_summary_table_rows
     
@@ -507,7 +571,10 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             "push_protection_bypassed_by": alert["push_protection_bypassed_by"],
             "state": alert["state"],
             "resolution": alert["resolution"],
-            "html_url": alert["html_url"]
+            "validity": alert.get("validity"),
+            "validity_checked_at": alert.get("validity_checked_at"),
+            "html_url": alert["html_url"],
+            "dismissal_request_status": dismissal_statuses.get(alert["number"])
         })
 
     # convert step_output to valid JSON:
@@ -535,7 +602,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
     parser = argparse.ArgumentParser(description="Process input parameters.")
-    parser.add_argument("--GitHubToken", type=str, required=True, help="GitHub Token")
+    parser.add_argument("--GitHubToken", type=str, required=False, default=None, help="GitHub Token (prefer GITHUB_TOKEN env var)")
     parser.add_argument("--FailOnAlert", type=str2bool, required=True, help="Fail on alert")
     parser.add_argument("--FailOnAlertExcludeClosed", type=str2bool, required=True, help="Fail on alert exclude closed")
     parser.add_argument("--DisablePRComment", type=str2bool, required=True, help="Disable PR comment")
@@ -546,4 +613,4 @@ if __name__ == "__main__":
     parser.add_argument("--DisableWorkflowSummary", type=str2bool, required=False, help="Disable workflow summary")
 
     args = parser.parse_args()
-    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTPS, args.ProxyURLHTTP, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary)
+    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTP, args.ProxyURLHTTPS, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary)

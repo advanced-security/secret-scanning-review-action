@@ -14,7 +14,6 @@ Ensure your pull request adheres to the following guidelines:
 
 Thank you for your suggestions!
 
-
 ## Updating your PR
 
 A lot of times, making a PR adhere to the standards above can be difficult.
@@ -23,3 +22,20 @@ edit your PR before we merge it. There's no need to open a new PR, just edit
 the existing one. If you're not sure how to do that,
 [here is a guide](https://github.com/RichardLitt/knowledge/blob/master/github/amending-a-commit-guide.md)
 on the different ways you can update your PR so that we can merge it.
+
+## Floating version tag
+
+Once you have a tag and release using the semver version, the last remaining thing to do is to move the dynamic version
+identifier to match the current SHA. This allows users to adopt a
+major version number (e.g. `v2`) in their workflows while
+automatically getting all the
+minor/patch updates.
+
+To do this just checkout `main`, force-create a new annotated tag, and push it:
+
+```bash
+git checkout main
+git pull origin main
+git tag -fa v2 -m "Updating v2 to 2.2.3"
+git push origin v2 --force
+```
