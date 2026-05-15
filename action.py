@@ -14,11 +14,10 @@ from datetime import datetime, timezone
 # Includes non-provider patterns and copilot patterns
 GENERIC_SECRET_TYPES = "password,ec_private_key,generic_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_url,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key"
 
-def get_api_base_url():
-    # GITHUB_API_URL is provided by the runner and points to the correct API host for the
-    # current GitHub instance (github.com, ghe.com data-residency tenants, or GHES).
-    # Fall back to public github.com for local/manual runs outside a workflow.
-    return os.environ.get('GITHUB_API_URL', 'https://api.github.com').rstrip('/')
+# GITHUB_API_URL is provided by the runner and points to the correct API host for the
+# current GitHub instance (github.com, ghe.com data-residency tenants, or GHES).
+# Fall back to public github.com for local/manual runs outside a workflow.
+API_BASE_URL = os.environ.get('GITHUB_API_URL', 'https://api.github.com').rstrip('/')
 
 def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-commits-on-a-pull-request
@@ -27,7 +26,7 @@ def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number,
     page = 1
     while True:
         try:
-            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}/commits?per_page={per_page}&page={page}"
+            url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}/commits?per_page={per_page}&page={page}"
             headers = {
                 "Authorization": f"Bearer {github_token}",
                 "Accept": "application/vnd.github+json",
@@ -62,7 +61,7 @@ def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, htt
     page = 1
     while True:
         try:
-            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/secret-scanning/alerts?per_page={per_page}&page={page}"
+            url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/secret-scanning/alerts?per_page={per_page}&page={page}"
             if skip_closed_alerts:
                 url += "&state=open"
             if secret_type is not None:
@@ -107,7 +106,7 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, h
     page = 1
     while True:
         try:
-            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/secret-scanning/alerts/{alert_number}/locations?per_page={per_page}&page={page}"
+            url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/secret-scanning/alerts/{alert_number}/locations?per_page={per_page}&page={page}"
             headers = {
                 "Authorization": f"Bearer {github_token}",
                 "Accept": "application/vnd.github+json",
@@ -144,7 +143,7 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, h
 def get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests#get-an-alert-dismissal-request-for-secret-scanning
     try:
-        url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/dismissal-requests/secret-scanning/{alert_number}"
+        url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/dismissal-requests/secret-scanning/{alert_number}"
         headers = {
             "Authorization": f"Bearer {github_token}",
             "Accept": "application/vnd.github+json",
@@ -160,7 +159,7 @@ def get_dismissal_request_for_alert(github_token, repo_owner, repo_name, alert_n
 def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#get-a-pull-request
     try:
-        url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}"
+        url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/pulls/{pull_request_number}"
         headers = {
             "Authorization": f"Bearer {github_token}",
             "Accept": "application/vnd.github+json",
@@ -188,7 +187,7 @@ def update_pull_request_comment(github_token, repo_owner, repo_name, pull_reques
     comments = []
     per_page = 100
     page = 1
-    url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
+    url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
     headers = {
         'Authorization': f'Bearer {github_token}',
         'Accept': 'application/vnd.github+json'
@@ -205,7 +204,7 @@ def update_pull_request_comment(github_token, repo_owner, repo_name, pull_reques
             if len(page_comments) < 100:
                 break
             page += 1
-            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
+            url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
     except requests.exceptions.RequestException as e:
         raise Exception(f"Error reading comment from '{repo_owner}/{repo_name}' Pull Request#{pull_request_number}. Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:{e.response.status_code} Message:{e})")
     pr_comment_watermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
@@ -240,7 +239,7 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
     comments = []
     per_page = 100
     page = 1
-    url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
+    url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
     headers = {
         'Authorization': f'Bearer {github_token}',
         'Accept': 'application/vnd.github+json'
@@ -257,7 +256,7 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
             if len(page_comments) < 100:
                 break
             page += 1
-            url = f"{get_api_base_url()}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
+            url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/issues/{pull_request_number}/comments?per_page={per_page}&page={page}"
         return comments
     except requests.exceptions.HTTPError as err:
         if response.status_code == 404:
@@ -277,7 +276,7 @@ def _validate_api_url(url):
     """Validate that a URL points to the expected GitHub API host to prevent SSRF token exfiltration."""
     from urllib.parse import urlparse
     parsed = urlparse(url)
-    expected = urlparse(get_api_base_url())
+    expected = urlparse(API_BASE_URL)
     if parsed.scheme != 'https':
         raise ValueError(f"Refusing to send credentials to non-HTTPS URL: {url}")
     if parsed.hostname != expected.hostname:

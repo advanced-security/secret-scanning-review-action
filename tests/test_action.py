@@ -1,11 +1,13 @@
 """Tests for pagination in action.py"""
 
+import importlib
 import sys
 import os
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 # Add parent directory to path so we can import action module
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import action
 
@@ -125,3 +127,33 @@ class TestUpdatePullRequestCommentPagination:
 
         # Should have used PATCH (existing comment found), not POST
         assert mock_patch.call_count == 1
+
+
+class TestApiBaseUrl:
+    """Tests for API_BASE_URL module-level configuration."""
+
+    @staticmethod
+    def _reload_action():
+        return importlib.reload(action)
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_defaults_to_github_com(self):
+        # Ensure GITHUB_API_URL is not set so the default is used
+        os.environ.pop("GITHUB_API_URL", None)
+        reloaded_action = self._reload_action()
+        assert reloaded_action.API_BASE_URL == "https://api.github.com"
+
+    @patch.dict(os.environ, {"GITHUB_API_URL": "https://api.octodemo.ghe.com"})
+    def test_honors_github_api_url(self):
+        reloaded_action = self._reload_action()
+        assert reloaded_action.API_BASE_URL == "https://api.octodemo.ghe.com"
+
+    @patch.dict(os.environ, {"GITHUB_API_URL": "https://api.github.com/"})
+    def test_strips_trailing_slash(self):
+        reloaded_action = self._reload_action()
+        assert reloaded_action.API_BASE_URL == "https://api.github.com"
+
+    @patch.dict(os.environ, {"GITHUB_API_URL": "https://ghes.example.com/api/v3"})
+    def test_ghes_url(self):
+        reloaded_action = self._reload_action()
+        assert reloaded_action.API_BASE_URL == "https://ghes.example.com/api/v3"
