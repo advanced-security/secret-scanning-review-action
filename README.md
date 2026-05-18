@@ -233,7 +233,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Secret Scanning Review Action'
-        uses: advanced-security/secret-scanning-review-action@v2
+        uses: advanced-security/secret-scanning-review-action@https://github.com/advanced-security/secret-scanning-review-action/commit/4abb6885c8419244c41ddfaf1020ed835a0e4693 # v2.2.7
         with:
           token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
           fail-on-alert: true
