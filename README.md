@@ -145,7 +145,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Secret Scanning Review Action'
-        uses: advanced-security/secret-scanning-review-action@4abb6885c8419244c41ddfaf1020ed835a0e4693 # v2.2.7
+        uses: advanced-security/secret-scanning-review-action@c8ac1ef693ea7d6c5f9367e82d0367dc78a12717 # v2.2.8
         with:
           token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
           fail-on-alert: true
@@ -165,7 +165,7 @@ An example of how to access this step output in your Actions workflow is shown b
 ```yaml
 [...]
 - name: 'Secret Scanning Review Action'
-  uses: advanced-security/secret-scanning-review-action@4abb6885c8419244c41ddfaf1020ed835a0e4693 # v2.2.7
+  uses: advanced-security/secret-scanning-review-action@c8ac1ef693ea7d6c5f9367e82d0367dc78a12717 # v2.2.8
   id: secret-alert-check
   with:
     token: ${{ steps.app-token.outputs.token }}
