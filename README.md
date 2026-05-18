@@ -66,6 +66,93 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
 ![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/6b08949d-8d60-425e-99a2-ee30bd6735ce)
 
+## Security Model Considerations
+
+- To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
+
+- By default, only users with the repository `Admin` role, users with the organization `Security manager` role, organization owners, _and the committer of the secret_, will be able to dismiss the alert.
+
+- If you do wish to give broader access to secret scanning alerts in the repository you might consider a [custom repository role configuration](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-peoples-access-to-your-organization-with-roles/about-custom-repository-roles#security). With a custom role you can choose to grant `View secret scanning results` or `Dismiss or reopen secret scanning results` on top of any of the base repository roles.
+
+## Configuration Options
+
+### Inputs
+
+| Input | Required | Description | Default |
+| ----- | -------- | ----------- | ------- |
+| `token` | **Yes** | GitHub Access Token with required permissions. See [token requirements](#token-requirements) below. | - |
+| `fail-on-alert` | No | Fail the action workflow via non-zero exit code if a matching secret scanning alert is found. | `false` |
+| `fail-on-alert-exclude-closed` | No | Handle failure exit code / annotations as warnings if the alert is found and marked as closed (state: 'resolved'). | `false` |
+| `disable-pr-comment` | No | Disable the PR comment feature. | `false` |
+| `runtime` | No | Runtime to use for the action. Options: `powershell` or `python`. | `powershell` |
+| `skip-closed-alerts` | No | Only process open alerts. | `false` |
+| `disable-workflow-summary` | No | Disable the workflow summary markdown table output. | `false` |
+| `python-http-proxy-url` | No | HTTP proxy URL for the python runtime. Example: `http://proxy.example.com:1234` | `""` |
+| `python-https-proxy-url` | No | HTTPS proxy URL for the python runtime. Example: `http://proxy.example.com:5678` | `""` |
+| `python-verify-ssl` | No | Enable/disable SSL verification for the python runtime. ⚠️ Disabling is NOT recommended for production. | `true` |
+| `python-skip-closed-alerts` | No | **DEPRECATED** - Use `skip-closed-alerts` instead. | `false` |
+| `python-disable-workflow-summary` | No | **DEPRECATED** - Use `disable-workflow-summary` instead. | `false` |
+
+### Outputs
+
+| Output   | Description |
+|----------|-------------|
+| `alerts` | JSON array containing details about the alerts detected in the PR. See [Step Output of Alert Metadata](#step-output-of-alert-metadata) for the JSON schema and example usage. |
+
+### Token Requirements
+
+The `token` input requires a GitHub Access Token with the following permissions:
+
+**Classic Tokens:**
+
+- `repo` scope
+- For public repositories: `public_repo` + `security_events` scopes
+- The `security_events` scope also enables dismissal request status
+
+**Fine-grained Personal Access Tokens:**
+
+- **Read-Only**: [Secret Scanning Alerts](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-secret-scanning-alerts)
+- **Read-Only**: [Contents](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-contents) _(optional — required for showing dismissal request status in the summary table)_
+- **Write**: [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests)
+  - If `disable-pr-comment: true`, only **Read-Only** [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests) is required (not required for public repositories)
+
+> [!NOTE]
+> The built-in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) cannot be used due to missing permissions on the `secret-scanning` API. You must generate a token (PAT or GitHub App) with the required permissions, add it as a secret in your repository, and assign the secret to the workflow parameter. See: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
+
+<!-- -->
+
+> [!IMPORTANT]
+> When using a custom token (instead of the built-in `GITHUB_TOKEN`), the workflow's `permissions` block only affects the built-in `GITHUB_TOKEN`, not your custom token. If the action fails with permission errors when using a custom token, verify the token itself has the required scopes/permissions listed above – adjusting the workflow's `permissions` block will not help.
+
+<!-- -->
+
+> [!WARNING]
+> This token will have `sensitive` data access to return a list of plain text secrets detected in your organization/repository. A detected secret implies anyone with read repository access would have the same level of access to the leaked secret, which should be considered compromised.
+
+## Example usage
+
+> [!NOTE]
+> Please keep in mind that you need a [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security) license if you're running this action on private repositories.
+
+1. Add a new YAML workflow to your `.github/workflows` folder:
+
+```yml
+name: 'Secret Scanning Review'
+on: [pull_request]
+
+jobs:
+  secret-scanning-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Secret Scanning Review Action'
+        uses: advanced-security/secret-scanning-review-action@4abb6885c8419244c41ddfaf1020ed835a0e4693 # v2.2.7
+        with:
+          token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
+          fail-on-alert: true
+          fail-on-alert-exclude-closed: true
+          runtime: 'powershell' # or 'python'
+```
+
 ### Step Output of Alert Metadata
 
 The Action provides a summary of the secrets introduced in the pull request as a step output variable, `alerts`. You can access this step output in subsequent steps in your workflow for any further processing that you would like to perform.
@@ -152,93 +239,6 @@ An example of the `alerts` step output variable is shown below, where two differ
         "dismissal_request_status": "denied"
     }
 ]
-```
-
-## Security Model Considerations
-
-- To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
-
-- By default, only users with the repository `Admin` role, users with the organization `Security manager` role, organization owners, _and the committer of the secret_, will be able to dismiss the alert.
-
-- If you do wish to give broader access to secret scanning alerts in the repository you might consider a [custom repository role configuration](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-peoples-access-to-your-organization-with-roles/about-custom-repository-roles#security). With a custom role you can choose to grant `View secret scanning results` or `Dismiss or reopen secret scanning results` on top of any of the base repository roles.
-
-## Configuration Options
-
-### Inputs
-
-| Input | Required | Description | Default |
-| ----- | -------- | ----------- | ------- |
-| `token` | **Yes** | GitHub Access Token with required permissions. See [token requirements](#token-requirements) below. | - |
-| `fail-on-alert` | No | Fail the action workflow via non-zero exit code if a matching secret scanning alert is found. | `false` |
-| `fail-on-alert-exclude-closed` | No | Handle failure exit code / annotations as warnings if the alert is found and marked as closed (state: 'resolved'). | `false` |
-| `disable-pr-comment` | No | Disable the PR comment feature. | `false` |
-| `runtime` | No | Runtime to use for the action. Options: `powershell` or `python`. | `powershell` |
-| `skip-closed-alerts` | No | Only process open alerts. | `false` |
-| `disable-workflow-summary` | No | Disable the workflow summary markdown table output. | `false` |
-| `python-http-proxy-url` | No | HTTP proxy URL for the python runtime. Example: `http://proxy.example.com:1234` | `""` |
-| `python-https-proxy-url` | No | HTTPS proxy URL for the python runtime. Example: `http://proxy.example.com:5678` | `""` |
-| `python-verify-ssl` | No | Enable/disable SSL verification for the python runtime. ⚠️ Disabling is NOT recommended for production. | `true` |
-| `python-skip-closed-alerts` | No | **DEPRECATED** - Use `skip-closed-alerts` instead. | `false` |
-| `python-disable-workflow-summary` | No | **DEPRECATED** - Use `disable-workflow-summary` instead. | `false` |
-
-### Outputs
-
-| Output   | Description |
-|----------|-------------|
-| `alerts` | JSON array containing details about the alerts detected in the PR. See [Step Output of Alert Metadata](#step-output-of-alert-metadata) for the JSON schema and example usage. |
-
-### Token Requirements
-
-The `token` input requires a GitHub Access Token with the following permissions:
-
-**Classic Tokens:**
-
-- `repo` scope
-- For public repositories: `public_repo` + `security_events` scopes
-- The `security_events` scope also enables dismissal request status
-
-**Fine-grained Personal Access Tokens:**
-
-- **Read-Only**: [Secret Scanning Alerts](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-secret-scanning-alerts)
-- **Read-Only**: [Contents](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-contents) _(optional — required for showing dismissal request status in the summary table)_
-- **Write**: [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests)
-  - If `disable-pr-comment: true`, only **Read-Only** [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests) is required (not required for public repositories)
-
-> [!NOTE]
-> The built-in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) cannot be used due to missing permissions on the `secret-scanning` API. You must generate a token (PAT or GitHub App) with the required permissions, add it as a secret in your repository, and assign the secret to the workflow parameter. See: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
-
-<!-- -->
-
-> [!IMPORTANT]
-> When using a custom token (instead of the built-in `GITHUB_TOKEN`), the workflow's `permissions` block only affects the built-in `GITHUB_TOKEN`, not your custom token. If the action fails with permission errors when using a custom token, verify the token itself has the required scopes/permissions listed above – adjusting the workflow's `permissions` block will not help.
-
-<!-- -->
-
-> [!WARNING]
-> This token will have `sensitive` data access to return a list of plain text secrets detected in your organization/repository. A detected secret implies anyone with read repository access would have the same level of access to the leaked secret, which should be considered compromised.
-
-## Example usage
-
-> [!NOTE]
-> Please keep in mind that you need a [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security) license if you're running this action on private repositories.
-
-1. Add a new YAML workflow to your `.github/workflows` folder:
-
-```yml
-name: 'Secret Scanning Review'
-on: [pull_request]
-
-jobs:
-  secret-scanning-review:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 'Secret Scanning Review Action'
-        uses: advanced-security/secret-scanning-review-action@4abb6885c8419244c41ddfaf1020ed835a0e4693 # v2.2.7
-        with:
-          token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
-          fail-on-alert: true
-          fail-on-alert-exclude-closed: true
-          runtime: 'powershell' # or 'python'
 ```
 
 ## Architecture
