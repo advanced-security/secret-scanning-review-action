@@ -30,6 +30,7 @@ jobs:
       version: ${{ inputs.version }}
       bump: ${{ inputs.bump }}
       prerelease: ${{ inputs.prerelease }}
+      update-readme-sha: true
     permissions:
       contents: write
       pull-requests: write
