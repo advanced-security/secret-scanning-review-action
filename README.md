@@ -78,7 +78,8 @@ An example of how to access this step output in your Actions workflow is shown b
 ```yaml
 [...]
 - name: 'Secret Scanning Review Action'
-  uses: advanced-security/secret-scanning-review-action@v2
+  uses: advanced-security/secret-scanning-review-action@v2                                    # floating major tag
+  # uses: advanced-security/secret-scanning-review-action@a38b70e18ae780c8a98a98c0d59795ed28948af9 # v2.2.6 (pinned)
   id: secret-alert-check
   with:
     token: ${{ steps.app-token.outputs.token }}
@@ -233,7 +234,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Secret Scanning Review Action'
-        uses: advanced-security/secret-scanning-review-action@v2
+        uses: advanced-security/secret-scanning-review-action@v2                                    # floating major tag
+        # uses: advanced-security/secret-scanning-review-action@a38b70e18ae780c8a98a98c0d59795ed28948af9 # v2.2.6 (pinned)
         with:
           token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
           fail-on-alert: true
