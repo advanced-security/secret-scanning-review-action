@@ -24,11 +24,11 @@ inputs:
   python-http-proxy-url:
     description: 'The URL of the http proxy to use for GitHub API requests (python runtime only).'
     required: false
-    default: '""'
+    default: ''
   python-https-proxy-url:
     description: 'The URL of the https proxy to use for GitHub API requests (python runtime only).'
     required: false
-    default: '""'
+    default: ''
   python-verify-ssl:
     description: 'A boolean to enable or disable SSL verification for GitHub API requests (python runtime only). NOTE: This is NOT recommended and may introduce additional security risks.'
     required: false
@@ -67,17 +67,49 @@ runs:
       - name: Run Powershell Script
         if: ${{ inputs.runtime == 'powershell' }}
         id: powershell-run
-        run: ${{ github.action_path }}/action.ps1 -GitHubToken ${{ inputs.token }} -FailOnAlert $${{ inputs.fail-on-alert }} -FailOnAlertExcludeClosed $${{ inputs.fail-on-alert-exclude-closed }} -DisablePRComment $${{ inputs.disable-pr-comment }} -DisableWorkflowSummary $${{ inputs.disable-workflow-summary }} -SkipClosedAlerts $${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
+        run: |
+          & "$env:ACTION_PATH/action.ps1" `
+            -GitHubToken $env:GITHUB_TOKEN `
+            -FailOnAlert ($env:INPUT_FAIL_ON_ALERT -eq 'true') `
+            -FailOnAlertExcludeClosed ($env:INPUT_FAIL_ON_ALERT_EXCLUDE_CLOSED -eq 'true') `
+            -DisablePRComment ($env:INPUT_DISABLE_PR_COMMENT -eq 'true') `
+            -DisableWorkflowSummary ($env:INPUT_DISABLE_WORKFLOW_SUMMARY -eq 'true') `
+            -SkipClosedAlerts ($env:INPUT_SKIP_CLOSED_ALERTS -eq 'true')
         shell: pwsh
+        env:
+          ACTION_PATH: ${{ github.action_path }}
+          GITHUB_TOKEN: ${{ inputs.token }}
+          INPUT_FAIL_ON_ALERT: ${{ inputs.fail-on-alert }}
+          INPUT_FAIL_ON_ALERT_EXCLUDE_CLOSED: ${{ inputs.fail-on-alert-exclude-closed }}
+          INPUT_DISABLE_PR_COMMENT: ${{ inputs.disable-pr-comment }}
+          INPUT_DISABLE_WORKFLOW_SUMMARY: ${{ inputs.disable-workflow-summary }}
+          INPUT_SKIP_CLOSED_ALERTS: ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
       - name: Run Python Script
         if: ${{ inputs.runtime == 'python' }}
         id: python-run
         run: |
-          pip install -r ${{ github.action_path }}/requirements.txt
-          python ${{ github.action_path }}/action.py --FailOnAlert ${{ inputs.fail-on-alert }} --FailOnAlertExcludeClosed ${{ inputs.fail-on-alert-exclude-closed }} --DisablePRComment ${{ inputs.disable-pr-comment }} --ProxyURLHTTP ${{ inputs.python-http-proxy-url }} --ProxyURLHTTPS ${{ inputs.python-https-proxy-url }} --VerifySSL ${{ inputs.python-verify-ssl }} --SkipClosedAlerts ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }} --DisableWorkflowSummary ${{ inputs.disable-workflow-summary || inputs.python-disable-workflow-summary }}
+          pip install -r "$ACTION_PATH/requirements.txt"
+          python "$ACTION_PATH/action.py" \
+            --FailOnAlert "$INPUT_FAIL_ON_ALERT" \
+            --FailOnAlertExcludeClosed "$INPUT_FAIL_ON_ALERT_EXCLUDE_CLOSED" \
+            --DisablePRComment "$INPUT_DISABLE_PR_COMMENT" \
+            --ProxyURLHTTP "$INPUT_PROXY_HTTP" \
+            --ProxyURLHTTPS "$INPUT_PROXY_HTTPS" \
+            --VerifySSL "$INPUT_VERIFY_SSL" \
+            --SkipClosedAlerts "$INPUT_SKIP_CLOSED_ALERTS" \
+            --DisableWorkflowSummary "$INPUT_DISABLE_WORKFLOW_SUMMARY"
         shell: bash
         env:
+          ACTION_PATH: ${{ github.action_path }}
           GITHUB_TOKEN: ${{ inputs.token }}
+          INPUT_FAIL_ON_ALERT: ${{ inputs.fail-on-alert }}
+          INPUT_FAIL_ON_ALERT_EXCLUDE_CLOSED: ${{ inputs.fail-on-alert-exclude-closed }}
+          INPUT_DISABLE_PR_COMMENT: ${{ inputs.disable-pr-comment }}
+          INPUT_PROXY_HTTP: ${{ inputs.python-http-proxy-url }}
+          INPUT_PROXY_HTTPS: ${{ inputs.python-https-proxy-url }}
+          INPUT_VERIFY_SSL: ${{ inputs.python-verify-ssl }}
+          INPUT_SKIP_CLOSED_ALERTS: ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
+          INPUT_DISABLE_WORKFLOW_SUMMARY: ${{ inputs.disable-workflow-summary || inputs.python-disable-workflow-summary }}
 branding:
   icon: "lock"
   color: "gray-dark"

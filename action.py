@@ -612,4 +612,9 @@ if __name__ == "__main__":
     parser.add_argument("--DisableWorkflowSummary", type=str2bool, required=False, help="Disable workflow summary")
 
     args = parser.parse_args()
-    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, args.ProxyURLHTTP, args.ProxyURLHTTPS, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary)
+
+    # Normalize proxy URLs: treat '""' (legacy default) and empty strings as None
+    proxy_http = args.ProxyURLHTTP if args.ProxyURLHTTP and args.ProxyURLHTTP.strip('"') else None
+    proxy_https = args.ProxyURLHTTPS if args.ProxyURLHTTPS and args.ProxyURLHTTPS.strip('"') else None
+
+    main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, proxy_http, proxy_https, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary)

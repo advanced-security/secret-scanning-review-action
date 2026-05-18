@@ -8,32 +8,32 @@ BeforeAll {
     Import-Module (Join-Path $repoRoot 'ActionHelpers.psm1') -Force
 
     # Define mock functions for external dependencies
-    function global:Invoke-GHRestMethod { 
+    function global:Invoke-GHRestMethod {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
         param(
-            $Method, 
+            $Method,
             $Uri
         )
     }
-    function global:Write-ActionError { 
+    function global:Write-ActionError {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
         param(
-            $Message, 
-            $File, 
-            $Line, 
+            $Message,
+            $File,
+            $Line,
             $Col
         )
     }
-    function global:Write-ActionWarning { 
+    function global:Write-ActionWarning {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
         param(
-            $Message, 
-            $File, 
-            $Line, 
+            $Message,
+            $File,
+            $Line,
             $Col
         )
     }
-    function global:Write-ActionDebug { 
+    function global:Write-ActionDebug {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
         param(
             $Message
