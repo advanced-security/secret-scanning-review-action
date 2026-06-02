@@ -211,14 +211,14 @@ jobs:
           path: TestResults/pytest
 
       - name: Upload PowerShell code coverage
-        uses: actions/upload-code-coverage@b51da2c3c1b23e04d2d6477cfc34350b1f5cd3e9 # v1
+        uses: actions/upload-code-coverage@abb5995db9e0199b0e2bb9dbd136fce4cb1ec4d3 # v1
         with:
           file: TestResults/pester/coverage.cobertura.xml
           language: PowerShell
           label: code-coverage/pester
 
       - name: Upload Python code coverage
-        uses: actions/upload-code-coverage@b51da2c3c1b23e04d2d6477cfc34350b1f5cd3e9 # v1
+        uses: actions/upload-code-coverage@abb5995db9e0199b0e2bb9dbd136fce4cb1ec4d3 # v1
         with:
           file: TestResults/pytest/coverage.pytest.xml
           language: Python
