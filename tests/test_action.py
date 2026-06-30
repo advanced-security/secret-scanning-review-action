@@ -21,7 +21,7 @@ def _make_comments(n):
 
 def _make_issue_comment_url(owner, repo, comment_id):
     """Create a GitHub issue comment API URL for test data."""
-    return f"https://api.github.com/repos/{owner}/{repo}/issues/comments/{comment_id}"
+    return f"{action.API_BASE_URL}/repos/{owner}/{repo}/issues/comments/{comment_id}"
 
 
 def _mock_response(json_data, status_code=200):
@@ -97,8 +97,9 @@ class TestGetPullRequestCommentsPagination:
         resp.raise_for_status.side_effect = requests.exceptions.HTTPError("404 Client Error")
         mock_get.return_value = resp
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit) as exc:
             action.get_pull_request_comments("token", "owner", "repo", 1, None, None, True)
+        assert exc.value.code == 1
 
     @patch("action.requests.get")
     def test_http_410_exits(self, mock_get):
@@ -107,8 +108,9 @@ class TestGetPullRequestCommentsPagination:
         resp.raise_for_status.side_effect = requests.exceptions.HTTPError("410 Client Error")
         mock_get.return_value = resp
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(SystemExit) as exc:
             action.get_pull_request_comments("token", "owner", "repo", 1, None, None, True)
+        assert exc.value.code == 1
 
 
 class TestUpdatePullRequestCommentPagination:
