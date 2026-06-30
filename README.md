@@ -66,95 +66,6 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
 ![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/6b08949d-8d60-425e-99a2-ee30bd6735ce)
 
-### Step Output of Alert Metadata
-
-The Action provides a summary of the secrets introduced in the pull request as a step output variable, `alerts`. You can access this step output in subsequent steps in your workflow for any further processing that you would like to perform.
-
-> [!NOTE]
-> The `alerts` step output does NOT include secret values.
-
-An example of how to access this step output in your Actions workflow is shown below:
-
-```yaml
-[...]
-- name: 'Secret Scanning Review Action'
-  uses: advanced-security/secret-scanning-review-action@v2                                    # floating major tag
-  # uses: advanced-security/secret-scanning-review-action@a38b70e18ae780c8a98a98c0d59795ed28948af9 # v2.2.6 (pinned)
-  id: secret-alert-check
-  with:
-    token: ${{ steps.app-token.outputs.token }}
-    runtime: 'python'
-
-- name: 'Log alert metadata'
-  if: always()
-  run: |
-    echo ${{ steps.secret-alert-check.outputs.alerts }}
-```
-
-The `alerts` variable is set to a JSON array with the following fields for each alert detected in the PR:
-
-- `number`: The ID of the alert
-- `secret_type`: The type of secret detected
-- `push_protection_bypassed`: Whether the alert was introduced in a commit that bypassed push protection
-- `push_protection_bypassed_by`: The user who bypassed push protection
-- `state`: The state of the alert
-- `resolution`: The resolution of the alert
-- `validity`: The validity status of the secret (`active`, `inactive`, `unknown`, or null if not yet checked)
-- `validity_checked_at`: The timestamp when the validity was last checked (may be null)
-- `html_url`: The URL to the alert in the GitHub UI
-- `dismissal_request_status`: The status of any dismissal request for the alert (e.g., `pending`, `approved`, `denied`, `expired`, `completed`, `cancelled`, or null if no request exists)
-
-An example of the `alerts` step output variable is shown below, where two different secrets were introduced in a PR:
-
-```json
-[
-    {
-        "number": 68,
-        "secret_type": "hardcoded_password",
-        "push_protection_bypassed": false,
-        "push_protection_bypassed_by": null,
-        "state": "open",
-        "resolution": null,
-        "validity": "active",
-        "validity_checked_at": "2024-01-15T10:30:00Z",
-        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/68",
-        "dismissal_request_status": null
-    },
-    {
-        "number": 67,
-        "secret_type": "hardcoded_password",
-        "push_protection_bypassed": true,
-        "push_protection_bypassed_by": {
-            "login": "CallMeGreg",
-            "id": 110078080,
-            "node_id": "U_kgDOBo-ogA",
-            "avatar_url": "https://avatars.githubusercontent.com/u/110078080?v=4",
-            "gravatar_id": "",
-            "url": "https://api.github.com/users/CallMeGreg",
-            "html_url": "https://github.com/CallMeGreg",
-            "followers_url": "https://api.github.com/users/CallMeGreg/followers",
-            "following_url": "https://api.github.com/users/CallMeGreg/following{/other_user}",
-            "gists_url": "https://api.github.com/users/CallMeGreg/gists{/gist_id}",
-            "starred_url": "https://api.github.com/users/CallMeGreg/starred{/owner}{/repo}",
-            "subscriptions_url": "https://api.github.com/users/CallMeGreg/subscriptions",
-            "organizations_url": "https://api.github.com/users/CallMeGreg/orgs",
-            "repos_url": "https://api.github.com/users/CallMeGreg/repos",
-            "events_url": "https://api.github.com/users/CallMeGreg/events{/privacy}",
-            "received_events_url": "https://api.github.com/users/CallMeGreg/received_events",
-            "type": "User",
-            "user_view_type": "public",
-            "site_admin": true
-        },
-        "state": "resolved",
-        "resolution": "false_positive",
-        "validity": "inactive",
-        "validity_checked_at": "2024-01-14T09:15:00Z",
-        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/67",
-        "dismissal_request_status": "denied"
-    }
-]
-```
-
 ## Security Model Considerations
 
 - To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
@@ -234,13 +145,100 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Secret Scanning Review Action'
-        uses: advanced-security/secret-scanning-review-action@v2                                    # floating major tag
-        # uses: advanced-security/secret-scanning-review-action@a38b70e18ae780c8a98a98c0d59795ed28948af9 # v2.2.6 (pinned)
+        uses: advanced-security/secret-scanning-review-action@c8ac1ef693ea7d6c5f9367e82d0367dc78a12717 # v2.2.8
         with:
           token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
           fail-on-alert: true
           fail-on-alert-exclude-closed: true
           runtime: 'powershell' # or 'python'
+```
+
+### Step Output of Alert Metadata
+
+The Action provides a summary of the secrets introduced in the pull request as a step output variable, `alerts`. You can access this step output in subsequent steps in your workflow for any further processing that you would like to perform.
+
+> [!NOTE]
+> The `alerts` step output does NOT include secret values.
+
+An example of how to access this step output in your Actions workflow is shown below:
+
+```yaml
+[...]
+- name: 'Secret Scanning Review Action'
+  uses: advanced-security/secret-scanning-review-action@c8ac1ef693ea7d6c5f9367e82d0367dc78a12717 # v2.2.8
+  id: secret-alert-check
+  with:
+    token: ${{ steps.app-token.outputs.token }}
+    runtime: 'python'
+
+- name: 'Log alert metadata'
+  if: always()
+  run: |
+    echo ${{ steps.secret-alert-check.outputs.alerts }}
+```
+
+The `alerts` variable is set to a JSON array with the following fields for each alert detected in the PR:
+
+- `number`: The ID of the alert
+- `secret_type`: The type of secret detected
+- `push_protection_bypassed`: Whether the alert was introduced in a commit that bypassed push protection
+- `push_protection_bypassed_by`: The user who bypassed push protection
+- `state`: The state of the alert
+- `resolution`: The resolution of the alert
+- `validity`: The validity status of the secret (`active`, `inactive`, `unknown`, or null if not yet checked)
+- `validity_checked_at`: The timestamp when the validity was last checked (may be null)
+- `html_url`: The URL to the alert in the GitHub UI
+- `dismissal_request_status`: The status of any dismissal request for the alert (e.g., `pending`, `approved`, `denied`, `expired`, `completed`, `cancelled`, or null if no request exists)
+
+An example of the `alerts` step output variable is shown below, where two different secrets were introduced in a PR:
+
+```json
+[
+    {
+        "number": 68,
+        "secret_type": "hardcoded_password",
+        "push_protection_bypassed": false,
+        "push_protection_bypassed_by": null,
+        "state": "open",
+        "resolution": null,
+        "validity": "active",
+        "validity_checked_at": "2024-01-15T10:30:00Z",
+        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/68",
+        "dismissal_request_status": null
+    },
+    {
+        "number": 67,
+        "secret_type": "hardcoded_password",
+        "push_protection_bypassed": true,
+        "push_protection_bypassed_by": {
+            "login": "CallMeGreg",
+            "id": 110078080,
+            "node_id": "U_kgDOBo-ogA",
+            "avatar_url": "https://avatars.githubusercontent.com/u/110078080?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/CallMeGreg",
+            "html_url": "https://github.com/CallMeGreg",
+            "followers_url": "https://api.github.com/users/CallMeGreg/followers",
+            "following_url": "https://api.github.com/users/CallMeGreg/following{/other_user}",
+            "gists_url": "https://api.github.com/users/CallMeGreg/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/CallMeGreg/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/CallMeGreg/subscriptions",
+            "organizations_url": "https://api.github.com/users/CallMeGreg/orgs",
+            "repos_url": "https://api.github.com/users/CallMeGreg/repos",
+            "events_url": "https://api.github.com/users/CallMeGreg/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/CallMeGreg/received_events",
+            "type": "User",
+            "user_view_type": "public",
+            "site_admin": true
+        },
+        "state": "resolved",
+        "resolution": "false_positive",
+        "validity": "inactive",
+        "validity_checked_at": "2024-01-14T09:15:00Z",
+        "html_url": "https://github.com/callmegreg-demo-org/ss-demo-repo/security/secret-scanning/67",
+        "dismissal_request_status": "denied"
+    }
+]
 ```
 
 ## Architecture

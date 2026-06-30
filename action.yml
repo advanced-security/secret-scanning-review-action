@@ -88,7 +88,7 @@ runs:
         if: ${{ inputs.runtime == 'python' }}
         id: python-run
         run: |
-          pip install -r "$ACTION_PATH/requirements.txt"
+          python -m pip install -r "$ACTION_PATH/requirements.txt" --require-hashes
           python "$ACTION_PATH/action.py" \
             --FailOnAlert "$INPUT_FAIL_ON_ALERT" \
             --FailOnAlertExcludeClosed "$INPUT_FAIL_ON_ALERT_EXCLUDE_CLOSED" \

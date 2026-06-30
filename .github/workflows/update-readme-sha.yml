@@ -19,6 +19,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: main
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Update README with release SHA
         env:
@@ -26,15 +28,15 @@ jobs:
           TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
           # Get the commit SHA for the release tag
-          RELEASE_SHA=$(git rev-parse "$TAG_NAME")
+          RELEASE_SHA=$(git rev-parse "${TAG_NAME}^{commit}")
           echo "Release tag: $TAG_NAME"
           echo "Release SHA: $RELEASE_SHA"
-          SHORT_SHA="${RELEASE_SHA:0:12}"
+          echo "RELEASE_SHA=$RELEASE_SHA" >> "$GITHUB_ENV"
 
           # Update SHA-pinned references in README.md
-          # Match pattern: advanced-security/secret-scanning-review-action@<sha> # v<version>
+          # Match pattern: advanced-security/secret-scanning-review-action@<sha> # <tag>
           sed -i -E \
-            "s|advanced-security/secret-scanning-review-action@[0-9a-f]{12,40}(\s+# v[0-9.]+)?|advanced-security/secret-scanning-review-action@${RELEASE_SHA} # ${TAG_NAME}|g" \
+            "s|advanced-security/secret-scanning-review-action@[0-9a-f]{12,40}([[:space:]]+# [^[:space:]]+)?|advanced-security/secret-scanning-review-action@${RELEASE_SHA} # ${TAG_NAME}|g" \
             README.md
 
           # Check if there were any changes
@@ -58,6 +60,6 @@ jobs:
             Automated PR to update the SHA-pinned action reference in README.md to match the latest release.
 
             **Release:** [${{ github.event.release.tag_name }}](${{ github.event.release.html_url }})
-            **Commit:** `${{ github.event.release.target_commitish }}`
+            **Commit:** `${{ env.RELEASE_SHA }}`
 
             This PR was automatically created by the "Update README SHA on Release" workflow.

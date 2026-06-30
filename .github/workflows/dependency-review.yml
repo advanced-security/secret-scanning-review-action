@@ -19,5 +19,5 @@ permissions:
 
 jobs:
   dependency-review:
-    uses: advanced-security/reusable-workflows/.github/workflows/dependency-review.yml@a0e88ede84d03cd069b01d18540db7fc86c52cf8 # main
+    uses: advanced-security/reusable-workflows/.github/workflows/dependency-review.yml@479412fa01ef5afc87ba10aaf19bd4297edbfcd3 # main
     secrets: inherit
