@@ -3,6 +3,8 @@
 Import-Module Pester
 
 BeforeAll {
+    Set-StrictMode -Version Latest
+
     # Import the ActionHelpers module from the repo root
     $repoRoot = Split-Path -Parent $PSScriptRoot
     Import-Module (Join-Path $repoRoot 'ActionHelpers.psm1') -Force
