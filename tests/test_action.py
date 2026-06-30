@@ -87,17 +87,25 @@ class TestGetPullRequestCommentsPagination:
 class TestUpdatePullRequestCommentPagination:
     """Tests for update_pull_request_comment pagination during comment fetching."""
 
+    @patch("action.requests.patch")
     @patch("action.requests.post")
     @patch("action.requests.get")
-    def test_pagination_advances_pages(self, mock_get, mock_post):
+    def test_pagination_advances_pages(self, mock_get, mock_post, mock_patch):
         """Verify pagination URL is rebuilt with incremented page number."""
+        watermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
         page1 = _make_comments(100)
-        page2 = _make_comments(30)
+        page2 = [
+            {
+                "id": 200,
+                "body": f"{watermark}\nold summary",
+                "url": "https://api.github.com/repos/owner/repo/issues/comments/200",
+            }
+        ]
         mock_get.side_effect = [_mock_response(page1), _mock_response(page2)]
 
-        # Mock the POST for creating a new comment
-        mock_post.return_value = _mock_response(
-            {"html_url": "https://github.com/owner/repo/pull/1#issuecomment-1"}
+        # Mock PATCH for updating an existing comment found on page 2
+        mock_patch.return_value = _mock_response(
+            {"html_url": "https://github.com/owner/repo/pull/1#issuecomment-200"}
         )
 
         action.update_pull_request_comment(
@@ -107,6 +115,9 @@ class TestUpdatePullRequestCommentPagination:
         assert mock_get.call_count == 2
         second_call_url = mock_get.call_args_list[1][0][0]
         assert "page=2" in second_call_url
+        # Ensure comments from page 2 were actually processed
+        assert mock_patch.call_count == 1
+        assert mock_post.call_count == 0
 
     @patch("action.requests.patch")
     @patch("action.requests.get")
