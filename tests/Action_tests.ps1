@@ -6,6 +6,7 @@ BeforeAll {
     # Import the ActionHelpers module from the repo root
     $repoRoot = Split-Path -Parent $PSScriptRoot
     Import-Module (Join-Path $repoRoot 'ActionHelpers.psm1') -Force
+    Set-StrictMode -Version Latest
 
     # Define mock functions for external dependencies
     function global:Invoke-GHRestMethod {
