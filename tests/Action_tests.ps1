@@ -256,7 +256,7 @@ Describe 'Get-PullRequestComment' {
         Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 -apiBaseUrl 'https://api.tenant.ghe.com'
 
         Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
-            $Uri -like 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments*'
+            $Uri -like 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments*' -and $Method -eq 'GET'
         }
     }
 }
