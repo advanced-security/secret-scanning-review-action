@@ -13,7 +13,7 @@ Extracts the last segment (ID) from a URL path.
 
 .DESCRIPTION
 Takes a URL and returns the last path segment, which is typically an ID.
-Returns null if the URL is empty or invalid.
+Trailing slashes are ignored. Returns null if the URL is empty or invalid.
 
 .PARAMETER url
 The URL string to extract the ID from.
@@ -32,7 +32,7 @@ function Get-IdFromUrl {
     }
 
     $uri = [uri]$url
-    return ($uri.AbsolutePath -split '/')[-1]
+    return ($uri.AbsolutePath.TrimEnd('/') -split '/')[-1]
 }
 
 <#
