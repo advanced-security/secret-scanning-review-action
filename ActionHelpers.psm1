@@ -32,7 +32,7 @@ function Get-IdFromUrl {
     }
 
     $uri = [uri]$url
-    return ($uri.AbsolutePath -split '/')[-1]
+    return ($uri.AbsolutePath.TrimEnd('/') -split '/')[-1]
 }
 
 <#

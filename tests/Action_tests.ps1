@@ -6,6 +6,7 @@ BeforeAll {
     # Import the ActionHelpers module from the repo root
     $repoRoot = Split-Path -Parent $PSScriptRoot
     Import-Module (Join-Path $repoRoot 'ActionHelpers.psm1') -Force
+    Set-StrictMode -Version Latest
 
     # Define mock functions for external dependencies
     function global:Invoke-GHRestMethod {
@@ -63,9 +64,9 @@ Describe 'Get-IdFromUrl' {
         Get-IdFromUrl -url 'https://api.github.com/repos/owner/repo/pulls/10/reviews/5555' | Should -Be '5555'
     }
 
-    It 'Handles URLs with trailing slash' {
-        # Last segment after split would be empty string
-        Get-IdFromUrl -url 'https://api.github.com/repos/owner/repo/pulls/123/' | Should -BeNullOrEmpty
+    It 'Extracts ID from URL with trailing slash' {
+        # Trailing slash should be ignored; ID remains valid
+        Get-IdFromUrl -url 'https://api.github.com/repos/owner/repo/pulls/123/' | Should -Be '123'
     }
 }
 
@@ -245,7 +246,7 @@ Describe 'Get-PullRequestComment' {
         Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42
 
         Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
-            $Uri -like 'https://api.github.com/repos/owner/repo/issues/42/comments*'
+            $Uri -like 'https://api.github.com/repos/owner/repo/issues/42/comments*' -and $Method -eq 'GET'
         }
     }
 
@@ -256,7 +257,7 @@ Describe 'Get-PullRequestComment' {
         Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 -apiBaseUrl 'https://api.tenant.ghe.com'
 
         Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
-            $Uri -like 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments*'
+            $Uri -like 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments*' -and $Method -eq 'GET'
         }
     }
 }
