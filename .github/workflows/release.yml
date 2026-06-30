@@ -25,12 +25,10 @@ on:
 
 jobs:
   release:
-    uses: advanced-security/reusable-workflows/.github/workflows/release.yml@479412fa01ef5afc87ba10aaf19bd4297edbfcd3 # v0.3.1
+    uses: advanced-security/reusable-workflows/.github/workflows/release.yml@1e9a5eaec15349802453a253279ee21094ff452b # main
     with:
       version: ${{ inputs.version }}
       bump: ${{ inputs.bump }}
       prerelease: ${{ inputs.prerelease }}
-      update-readme-sha: true
     permissions:
       contents: write
-      pull-requests: write
