@@ -63,9 +63,9 @@ Describe 'Get-IdFromUrl' {
         Get-IdFromUrl -url 'https://api.github.com/repos/owner/repo/pulls/10/reviews/5555' | Should -Be '5555'
     }
 
-    It 'Handles URLs with trailing slash' {
-        # Last segment after split would be empty string
-        Get-IdFromUrl -url 'https://api.github.com/repos/owner/repo/pulls/123/' | Should -BeNullOrEmpty
+    It 'Extracts ID from URL with trailing slash' {
+        # Trailing slash should be ignored; ID remains valid
+        Get-IdFromUrl -url 'https://api.github.com/repos/owner/repo/pulls/123/' | Should -Be '123'
     }
 }
 
