@@ -77,7 +77,7 @@ jobs:
           output: both
 
       - name: Add Coverage PR Comment
-        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3
         if: github.event_name == 'pull_request'
         with:
           recreate: true
@@ -211,14 +211,14 @@ jobs:
           path: TestResults/pytest
 
       - name: Upload PowerShell code coverage
-        uses: actions/upload-code-coverage@abb5995db9e0199b0e2bb9dbd136fce4cb1ec4d3 # v1
+        uses: actions/upload-code-coverage@a72ab75b4dee0e479386fb9bf33c8dcf64b9c772 # v1
         with:
           file: TestResults/pester/coverage.cobertura.xml
           language: PowerShell
           label: code-coverage/pester
 
       - name: Upload Python code coverage
-        uses: actions/upload-code-coverage@abb5995db9e0199b0e2bb9dbd136fce4cb1ec4d3 # v1
+        uses: actions/upload-code-coverage@a72ab75b4dee0e479386fb9bf33c8dcf64b9c772 # v1
         with:
           file: TestResults/pytest/coverage.pytest.xml
           language: Python
