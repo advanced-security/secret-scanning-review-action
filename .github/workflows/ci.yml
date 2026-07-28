@@ -20,7 +20,7 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run Pester (JUnit results + Cobertura coverage)
         shell: pwsh
@@ -77,7 +77,7 @@ jobs:
           output: both
 
       - name: Add Coverage PR Comment
-        uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0 # v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3
         if: github.event_name == 'pull_request'
         with:
           recreate: true
@@ -97,10 +97,10 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.x'
 
@@ -130,7 +130,7 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run Pester (JUnit results + Cobertura coverage)
         shell: pwsh
@@ -194,7 +194,7 @@ jobs:
     steps:
       # On PRs, check out the head commit (not the merge commit) so coverage
       # data matches the commit SHA we report to the upload endpoint.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
@@ -211,14 +211,14 @@ jobs:
           path: TestResults/pytest
 
       - name: Upload PowerShell code coverage
-        uses: actions/upload-code-coverage@abb5995db9e0199b0e2bb9dbd136fce4cb1ec4d3 # v1
+        uses: actions/upload-code-coverage@1c15be36fc3733ba839b1dd643bd9556e4426dc1 # v1
         with:
           file: TestResults/pester/coverage.cobertura.xml
           language: PowerShell
           label: code-coverage/pester
 
       - name: Upload Python code coverage
-        uses: actions/upload-code-coverage@abb5995db9e0199b0e2bb9dbd136fce4cb1ec4d3 # v1
+        uses: actions/upload-code-coverage@1c15be36fc3733ba839b1dd643bd9556e4426dc1 # v1
         with:
           file: TestResults/pytest/coverage.pytest.xml
           language: Python
