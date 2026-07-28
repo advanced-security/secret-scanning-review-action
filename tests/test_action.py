@@ -576,3 +576,24 @@ class TestMainFailClosed:
 
         assert self._run(True) == 0
         assert "::warning file=dir/a%2Cb%3A%3Ac.txt,line=1,col=2::" in capsys.readouterr().out
+
+
+class TestGetPullRequestNumberFromRef:
+    """Tests for get_pull_request_number_from_ref."""
+
+    def test_pull_request_event_ref(self):
+        assert action.get_pull_request_number_from_ref("refs/pull/120/merge") == "120"
+
+    def test_merge_group_event_ref(self):
+        ref = "refs/heads/gh-readonly-queue/main/pr-120-abcdef1234567890abcdef1234567890abcdef12"
+        assert action.get_pull_request_number_from_ref(ref) == "120"
+
+    def test_merge_group_event_ref_with_slash_in_base_branch(self):
+        ref = "refs/heads/gh-readonly-queue/releases/1.0/pr-42-abcdef1234567890abcdef1234567890abcdef12"
+        assert action.get_pull_request_number_from_ref(ref) == "42"
+
+    def test_returns_none_for_unrecognized_ref(self):
+        assert action.get_pull_request_number_from_ref("refs/heads/main") is None
+
+    def test_returns_none_for_empty_ref(self):
+        assert action.get_pull_request_number_from_ref("") is None
