@@ -458,4 +458,41 @@ function Get-AlertDismissalState {
     }
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState
+<#
+.SYNOPSIS
+Extracts the pull request number from the GITHUB_REF environment variable.
+
+.DESCRIPTION
+Supports both the standard `pull_request` event ref format (refs/pull/:prNumber/merge)
+and the `merge_group` event ref format used by GitHub merge queues
+(refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha).
+Returns $null if the ref does not match either format.
+
+.PARAMETER githubRef
+The value of the GITHUB_REF environment variable.
+
+.EXAMPLE
+Get-PullRequestNumberFromRef -githubRef 'refs/pull/120/merge'
+Returns: '120'
+
+.EXAMPLE
+Get-PullRequestNumberFromRef -githubRef 'refs/heads/gh-readonly-queue/main/pr-120-abcdef1234567890abcdef1234567890abcdef12'
+Returns: '120'
+#>
+function Get-PullRequestNumberFromRef {
+    param(
+        [string]$githubRef
+    )
+
+    if ($githubRef -match 'refs/pull/([0-9]+)') {
+        return $matches[1]
+    }
+
+    if ($githubRef -match 'refs/heads/gh-readonly-queue/.+/pr-([0-9]+)-') {
+        return $matches[1]
+    }
+
+    return $null
+}
+
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef

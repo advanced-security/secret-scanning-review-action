@@ -138,7 +138,7 @@ The `token` input requires a GitHub Access Token with the following permissions:
 
 ```yml
 name: 'Secret Scanning Review'
-on: [pull_request]
+on: [pull_request, merge_group]
 
 jobs:
   secret-scanning-review:
@@ -289,7 +289,7 @@ sequenceDiagram
 
 - Implicit
   - GITHUB_REPOSITORY - The owner / repository name.
-  - GITHUB_REF - PR merge branch refs/pull/:prNumber/merge
+  - GITHUB_REF - The pull request ref. Supports both the `pull_request` event (`refs/pull/:prNumber/merge`) and the `merge_group` event used by [merge queues](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) (`refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha`).
 
 - Outputs
   - GITHUB_STEP_SUMMARY - Markdown for each job so that it will be displayed on the summary page of a workflow run (unique for each step in a job)
@@ -327,6 +327,15 @@ sequenceDiagram
   - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments>
 
 ## FAQ
+
+### Does this action support merge queues?
+
+Yes. In addition to the `pull_request` event, the action supports being triggered by the [`merge_group`](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#merge_group) event used by [merge queues](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue). Add `merge_group` to your workflow's `on:` triggers (see [Example usage](#example-usage)).
+
+The pull request number is parsed from `GITHUB_REF` for both event types, and the action always retrieves the list of commits directly from the pull request via the Pulls API (independent of the ref). This means the "is a secret scanning alert's initial commit part of this PR?" comparison is unaffected by merge queue's synthetic merge commit.
+
+> [!NOTE]
+> Merge groups that batch multiple pull requests together do not encode a single pull request number in `GITHUB_REF`, so this scenario is not currently supported.
 
 ### Why are there two runtime options and what's the difference?
 
