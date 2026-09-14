@@ -15,14 +15,14 @@
 [![GHEC with data residency](https://img.shields.io/badge/Supported%20on-GitHub%20Enterprise%20Cloud%20with%20data%20residency-0969da)](https://docs.github.com/en/enterprise-cloud@latest/admin/data-residency)
 [![GHES](https://img.shields.io/badge/Supported%20on-GitHub%20Enterprise%20Server-0969da)](https://docs.github.com/en/enterprise-server@latest)
 
-
 > [!IMPORTANT]
 > 🚨 September 9, 2026: [GitHub changelog entry](https://github.blog/changelog/2026-09-09-block-pull-requests-with-exposed-secrets-from-merging/)
 >
 > You can use repository rulesets to block pull requests from merging when the pull request introduces secret scanning alerts. Developers without bypass permissions must clear the block by resolving each alert.
 > The rule checks two things before a pull request can merge:
-> * A secret scan has completed for the head commit
-> * No alerts are open for secrets introduced by the pull request's commits
+>
+> - A secret scan has completed for the head commit
+> - No alerts are open for secrets introduced by the pull request's commits
 
 ## Overview
 
