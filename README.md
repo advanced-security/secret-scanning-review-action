@@ -17,12 +17,12 @@
 
 
 > [!IMPORTANT]
->🚨 September 9 2026: https://github.blog/changelog/2026-09-09-block-pull-requests-with-exposed-secrets-from-merging/
+> 🚨 September 9, 2026: [GitHub changelog entry](https://github.blog/changelog/2026-09-09-block-pull-requests-with-exposed-secrets-from-merging/)
 >
->You can use repository rulesets to block pull requests from merging when the pull request introduces secret scanning alerts. Developers without bypass permissions must clear the block by resolving each alert.
+> You can use repository rulesets to block pull requests from merging when the pull request introduces secret scanning alerts. Developers without bypass permissions must clear the block by resolving each alert.
 > The rule checks two things before a pull request can merge:
->* A secret scan has completed for the head commit
->* No alerts are open for secrets introduced by the pull request’s commits
+> * A secret scan has completed for the head commit
+> * No alerts are open for secrets introduced by the pull request's commits
 
 ## Overview
 
