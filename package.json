@@ -1,0 +1,15 @@
+{
+  "name": "secret-scanning-review-action",
+  "version": "1.0.0",
+  "description": "markdownlint tooling for CI",
+  "private": true,
+  "scripts": {
+    "test": "markdownlint '**/*.md' --ignore node_modules --disable MD013"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "markdownlint-cli": "^0.49.1"
+  }
+}

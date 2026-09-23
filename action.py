@@ -306,6 +306,24 @@ def get_pull_request_review_comment(github_token, pr_review_comment_url, http_pr
         print(f"An error occurred: {err}")
         exit(1)
 
+def get_pull_request_number_from_ref(github_ref):
+    """Extract the pull request number from the GITHUB_REF environment variable.
+
+    Supports both the standard 'pull_request' event ref format
+    (refs/pull/:prNumber/merge) and the 'merge_group' event ref format used by
+    GitHub merge queues (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha).
+    Returns None if the ref does not match either format.
+    """
+    match = re.match(r'refs/pull/([0-9]+)', github_ref)
+    if match:
+        return match.group(1)
+
+    match = re.match(r'refs/heads/gh-readonly-queue/.+/pr-([0-9]+)-', github_ref)
+    if match:
+        return match.group(1)
+
+    return None
+
 def get_alert_location_type(alert_location):
     if 'type' not in alert_location:
         raise ValueError("Alert location does not have a 'type' field.")
@@ -350,15 +368,13 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     repo_owner, repo_name = repo.split('/')
     logging.debug(f"repo_owner: {repo_owner}, repo_name: {repo_name}")
 
-    # Get the pull request number from the GITHUB_REF environment variable
-    pull_request_number = None
+    # Get the pull request number from the GITHUB_REF environment variable.
+    # Supports both the 'pull_request' event (refs/pull/:prNumber/merge) and the
+    # 'merge_group' event used by merge queues (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha)
     github_ref = os.environ.get('GITHUB_REF', '')
-
-    match = re.match(r'refs/pull/([0-9]+)', github_ref)
-    if match:
-        pull_request_number = match.group(1)
-    else:
-        raise Exception("Action workflow must be run on 'pull_request'. GITHUB_REF is not set to a pull request number")
+    pull_request_number = get_pull_request_number_from_ref(github_ref)
+    if not pull_request_number:
+        raise Exception("Action workflow must be run on 'pull_request' or 'merge_group'. GITHUB_REF is not set to a pull request number")
     logging.debug(f"pull_request_number: {pull_request_number}")
 
     # Get the pull request information:

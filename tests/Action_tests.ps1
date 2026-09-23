@@ -459,3 +459,25 @@ Describe 'Get-AlertDismissalState' {
     }
 
 }
+
+Describe 'Get-PullRequestNumberFromRef' {
+    It 'Extracts PR number from pull_request event ref' {
+        Get-PullRequestNumberFromRef -githubRef 'refs/pull/120/merge' | Should -Be '120'
+    }
+
+    It 'Extracts PR number from merge_group event ref' {
+        Get-PullRequestNumberFromRef -githubRef 'refs/heads/gh-readonly-queue/main/pr-120-abcdef1234567890abcdef1234567890abcdef12' | Should -Be '120'
+    }
+
+    It 'Extracts PR number from merge_group event ref with slash in base branch' {
+        Get-PullRequestNumberFromRef -githubRef 'refs/heads/gh-readonly-queue/releases/1.0/pr-42-abcdef1234567890abcdef1234567890abcdef12' | Should -Be '42'
+    }
+
+    It 'Returns null for an unrecognized ref' {
+        Get-PullRequestNumberFromRef -githubRef 'refs/heads/main' | Should -BeNullOrEmpty
+    }
+
+    It 'Returns null for an empty ref' {
+        Get-PullRequestNumberFromRef -githubRef '' | Should -BeNullOrEmpty
+    }
+}

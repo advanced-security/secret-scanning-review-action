@@ -150,12 +150,13 @@ $ApiBaseUrl = if ([String]::IsNullOrWhiteSpace($env:GITHUB_API_URL)) { 'https://
 Write-ActionDebug "Using GitHub API base URL: $ApiBaseUrl"
 
 #get the pull request number from the GITHUB_REF environment variable
-if ($env:GITHUB_REF -match 'refs/pull/([0-9]+)') {
-    $PullRequestNumber = $matches[1]
-}
-else {
+#supports both the 'pull_request' event (refs/pull/:prNumber/merge) and the 'merge_group' event
+#used by merge queues (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha)
+$PullRequestNumber = Get-PullRequestNumberFromRef -githubRef $env:GITHUB_REF
+if (-not $PullRequestNumber) {
     #https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request
-    Set-ActionFailed -Message "Action workflow must be run on 'pull_request'.  GITHUB_REF is not set to a pull request number"
+    #https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#merge_group
+    Set-ActionFailed -Message "Action workflow must be run on 'pull_request' or 'merge_group'.  GITHUB_REF is not set to a pull request number"
 }
 
 #Default Org / Repo for all GH api calls
