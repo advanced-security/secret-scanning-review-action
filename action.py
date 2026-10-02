@@ -398,47 +398,49 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     # For each alert check if the alert's commit is in the list of PR commits
     logging.debug("Checking if any alert location commits are in the list of PR commits...")
     alerts_in_pr = []
+    pr_comments = None
     alerts_reviewed = 0
     for alert in alerts:
         alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
+        matching_locations = []
         for location in alert_locations:
             if location['type'] == 'commit':
                 if location['details']['commit_sha'] in commit_shas:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a commit in the PR.")
-                    alerts_in_pr.append(alert)
-                    break
+                    matching_locations.append(location)
             elif location['type'] == 'pull_request_title':
                 if location['details']['pull_request_title_url'] == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR title.")
-                    alerts_in_pr.append(alert)
-                    break
+                    matching_locations.append(location)
             elif location['type'] == 'pull_request_body':
                 if location['details']['pull_request_body_url'] == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in the PR body.")
-                    alerts_in_pr.append(alert)
-                    break
+                    matching_locations.append(location)
             elif location['type'] == 'pull_request_comment':
-                pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
+                if pr_comments is None:
+                    pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
                 comment_id = location['details']['pull_request_comment_url'].split('/')[-1]
                 for comment in pr_comments:
                     if str(comment['id']) == comment_id:
                         logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR comment.")
-                        alerts_in_pr.append(alert)
+                        matching_locations.append(location)
                         break
             elif location['type'] == 'pull_request_review':
                 # remove '/reviews/1234567890' from the end of the pull_request_review_url to compare against the PR URL:
                 shortened_pr_review_url = location['details']['pull_request_review_url'].rstrip('/').rsplit('/', 2)[0]
                 if shortened_pr_review_url == pull_request['url']:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review.")
-                    alerts_in_pr.append(alert)
-                    break
+                    matching_locations.append(location)
             elif location['type'] == 'pull_request_review_comment':
-                pr_review_comment_url = location['details']['pull_request_review_comment_url']
-                pr_review_comment = get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl)
-                if pr_review_comment['pull_request_url'] == pull_request['url']:
+                # Pending and deleted review comments return 404 but are still detected by
+                # secret scanning. The alert location is sufficient to associate it with the PR.
+                if location['details'].get('pull_request_review_comment_url'):
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
-                    alerts_in_pr.append(alert)
-                    break
+                    matching_locations.append(location)
+
+        if matching_locations:
+            alert['locations'] = matching_locations
+            alerts_in_pr.append(alert)
 
         # Increment the counter and log the progress
         alerts_reviewed += 1
@@ -474,9 +476,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             state_value = f'{alert["state"]} (dismissal)'
             logging.warning(f"Alert #{alert['number']} has a dismissal request but the dismissal request status could not be retrieved. Ensure your token has 'contents: read' permission for dismissal request details.")
 
-        # Need to get locations for the alert
-        alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
-        for location in alert_locations:
+        for location in alert['locations']:
             num_secrets_alert_locations_detected += 1
             alert_type = location['type']
             alert_location = get_alert_location_type(location)

@@ -201,3 +201,78 @@ class TestApiBaseUrl:
     def test_ghes_url(self):
         reloaded_action = self._reload_action()
         assert reloaded_action.API_BASE_URL == "https://ghes.example.com/api/v3"
+
+
+def test_main_retains_only_matching_locations_and_trusts_review_comment_locations(monkeypatch, tmp_path):
+    """Matching alerts retain only PR locations without fetching pending review comments."""
+    matching_commit = {
+        "type": "commit",
+        "details": {
+            "commit_sha": "matching-sha",
+            "path": "src/example.py",
+            "start_line": 1,
+            "start_column": 1,
+        },
+    }
+    matching_review_comment = {
+        "type": "pull_request_review_comment",
+        "details": {
+            "pull_request_review_comment_url": (
+                f"{action.API_BASE_URL}/repos/owner/repo/pulls/comments/1"
+            ),
+        },
+    }
+    alert = {
+        "number": 1,
+        "secret_type": "test_secret",
+        "secret_type_display_name": "Test secret",
+        "state": "open",
+        "resolution": None,
+        "push_protection_bypassed": False,
+        "push_protection_bypassed_by": None,
+        "validity": None,
+        "validity_checked_at": None,
+        "html_url": "https://example.test/alert/1",
+    }
+    output_file = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_TOKEN", "token")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setenv("GITHUB_REF", "refs/pull/1/merge")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_file))
+    monkeypatch.setattr(
+        action,
+        "get_pull_request",
+        lambda *_: {
+            "url": f"{action.API_BASE_URL}/repos/owner/repo/pulls/1",
+            "html_url": "https://example.test/owner/repo/pull/1",
+        },
+    )
+    monkeypatch.setattr(
+        action, "get_commits_for_pr", lambda *_: [{"sha": "matching-sha"}]
+    )
+    monkeypatch.setattr(
+        action, "get_secret_scanning_alerts_for_repo",
+        lambda *args, **kwargs: [alert] if kwargs.get("secret_type") is None else [],
+    )
+    locations = [matching_commit, matching_review_comment, {
+        "type": "commit",
+        "details": {
+            "commit_sha": "other-sha",
+            "path": "src/other.py",
+            "start_line": 1,
+            "start_column": 1,
+        },
+    }]
+    mock_locations = MagicMock(return_value=locations)
+    monkeypatch.setattr(action, "get_locations_for_alert", mock_locations)
+    review_comment = MagicMock()
+    monkeypatch.setattr(action, "get_pull_request_review_comment", review_comment)
+    monkeypatch.setattr(action, "get_dismissal_request_for_alert", lambda *_: None)
+
+    with pytest.raises(SystemExit) as exc:
+        action.main("token", False, False, True, None, None, True, False, True)
+
+    assert exc.value.code == 0
+    assert mock_locations.call_count == 1
+    review_comment.assert_not_called()
+    assert alert["locations"] == [matching_commit, matching_review_comment]

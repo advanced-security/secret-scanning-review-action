@@ -472,9 +472,8 @@ if (!$DisablePRComment -and $alertsInitiatedFromPr.Count -gt 0) {
     - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment
     - format: /repos/{owner}/{repo}/issues/{pull_number}/comments
     #>
-    $commentUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/issues/$PullRequestNumber/comments?per_page=100"
     try {
-        $comments = Invoke-GHRestMethod -Method GET -Uri $commentUrl
+        $comments = Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl
     }
     catch {
         Set-ActionFailed -Message "Error reading comment from '$OrganizationName/$RepositoryName' Pull Request#$PullRequestNumber.  Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
@@ -490,6 +489,7 @@ if (!$DisablePRComment -and $alertsInitiatedFromPr.Count -gt 0) {
             $commentResponse = Invoke-GHRestMethod -Method PATCH -Uri $existingComment.url -Body $($comment | ConvertTo-Json)
         }
         else {
+            $commentUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/issues/$PullRequestNumber/comments"
             $commentResponse = Invoke-GHRestMethod -Method POST -Uri $commentUrl -Body $($comment | ConvertTo-Json)
         }
         Write-ActionInfo "Updated PR Comment: $($commentResponse.html_url)"
