@@ -17,6 +17,10 @@ inputs:
     description: 'A boolean to disable the PR comment feature.'
     required: false
     default: 'false'
+  fail-closed:
+    description: 'A boolean that controls how GitHub API errors are handled. When true (default), any API error that prevents a complete review fails the workflow. When false, API errors are reported as warnings and the review continues with partial results (or is skipped) without failing the workflow. Detected alerts still honor fail-on-alert either way.'
+    required: false
+    default: 'true'
   runtime:
     description: 'The runtime to use for the action (`powershell` or `python`).'
     required: false
@@ -74,7 +78,8 @@ runs:
             -FailOnAlertExcludeClosed ($env:INPUT_FAIL_ON_ALERT_EXCLUDE_CLOSED -eq 'true') `
             -DisablePRComment ($env:INPUT_DISABLE_PR_COMMENT -eq 'true') `
             -DisableWorkflowSummary ($env:INPUT_DISABLE_WORKFLOW_SUMMARY -eq 'true') `
-            -SkipClosedAlerts ($env:INPUT_SKIP_CLOSED_ALERTS -eq 'true')
+            -SkipClosedAlerts ($env:INPUT_SKIP_CLOSED_ALERTS -eq 'true') `
+            -FailClosed ($env:INPUT_FAIL_CLOSED -ne 'false')
         shell: pwsh
         env:
           ACTION_PATH: ${{ github.action_path }}
@@ -84,6 +89,7 @@ runs:
           INPUT_DISABLE_PR_COMMENT: ${{ inputs.disable-pr-comment }}
           INPUT_DISABLE_WORKFLOW_SUMMARY: ${{ inputs.disable-workflow-summary }}
           INPUT_SKIP_CLOSED_ALERTS: ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
+          INPUT_FAIL_CLOSED: ${{ inputs.fail-closed }}
       - name: Run Python Script
         if: ${{ inputs.runtime == 'python' }}
         id: python-run
@@ -97,7 +103,8 @@ runs:
             --ProxyURLHTTPS "$INPUT_PROXY_HTTPS" \
             --VerifySSL "$INPUT_VERIFY_SSL" \
             --SkipClosedAlerts "$INPUT_SKIP_CLOSED_ALERTS" \
-            --DisableWorkflowSummary "$INPUT_DISABLE_WORKFLOW_SUMMARY"
+            --DisableWorkflowSummary "$INPUT_DISABLE_WORKFLOW_SUMMARY" \
+            --FailClosed "${INPUT_FAIL_CLOSED:-true}"
         shell: bash
         env:
           ACTION_PATH: ${{ github.action_path }}
@@ -110,6 +117,7 @@ runs:
           INPUT_VERIFY_SSL: ${{ inputs.python-verify-ssl }}
           INPUT_SKIP_CLOSED_ALERTS: ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
           INPUT_DISABLE_WORKFLOW_SUMMARY: ${{ inputs.disable-workflow-summary || inputs.python-disable-workflow-summary }}
+          INPUT_FAIL_CLOSED: ${{ inputs.fail-closed }}
 branding:
   icon: "lock"
   color: "gray-dark"

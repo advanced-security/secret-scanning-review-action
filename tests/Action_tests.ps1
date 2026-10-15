@@ -14,7 +14,8 @@ BeforeAll {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '')]
         param(
             $Method,
-            $Uri
+            $Uri,
+            $ExtendedResult
         )
     }
     function global:Write-ActionError {
@@ -221,12 +222,21 @@ Describe 'Get-AlertLocationWithLink' {
 }
 
 Describe 'Get-PullRequestComment' {
-    It 'Returns empty array when API call fails' {
+    It 'Propagates API errors to the caller' {
         Mock Invoke-GHRestMethod { throw "API Error" } -ModuleName ActionHelpers
-        Mock Write-ActionDebug { } -ModuleName ActionHelpers
+
+        { Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 } | Should -Throw '*API Error*'
+    }
+
+    It 'Follows pagination when a page is full' {
+        Mock Invoke-GHRestMethod {
+            if ($Uri -like '*page=1') { return @(1..100 | ForEach-Object { @{ id = $_ } }) }
+            return @( @{ id = 101 } )
+        } -ModuleName ActionHelpers
 
         $result = Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42
-        $result | Should -BeNullOrEmpty
+        $result.Count | Should -Be 101
+        Should -Invoke Invoke-GHRestMethod -Times 2 -ModuleName ActionHelpers
     }
 
     It 'Returns comments from single page' {
@@ -260,6 +270,88 @@ Describe 'Get-PullRequestComment' {
         Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
             $Uri -like 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments*' -and $Method -eq 'GET'
         }
+    }
+}
+
+Describe 'Get-ErrorStatusCode' {
+    It 'Returns the HTTP status code from the error response' {
+        $errorRecord = [pscustomobject]@{ Exception = [pscustomobject]@{ Response = [pscustomobject]@{ StatusCode = [System.Net.HttpStatusCode]::NotFound } } }
+        Get-ErrorStatusCode -ErrorRecord $errorRecord | Should -Be 404
+    }
+
+    It 'Returns null when the error has no response' {
+        try { throw 'network failure' } catch { $result = Get-ErrorStatusCode -ErrorRecord $_ }
+        $result | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-PullRequestReviewComment' {
+    It 'Refuses non-HTTPS URLs' {
+        Mock Invoke-GHRestMethod { } -ModuleName ActionHelpers
+        { Get-PullRequestReviewComment -url 'http://api.github.com/repos/o/r/pulls/comments/1' -expectedApiBaseUrl 'https://api.github.com' } | Should -Throw '*non-HTTPS*'
+        Should -Invoke Invoke-GHRestMethod -Times 0 -ModuleName ActionHelpers
+    }
+
+    It 'Refuses URLs for a different host' {
+        Mock Invoke-GHRestMethod { } -ModuleName ActionHelpers
+        { Get-PullRequestReviewComment -url 'https://evil.example.com/repos/o/r/pulls/comments/1' -expectedApiBaseUrl 'https://api.github.com' } | Should -Throw '*does not match*'
+        Should -Invoke Invoke-GHRestMethod -Times 0 -ModuleName ActionHelpers
+    }
+
+    It 'Returns the review comment for the expected host' {
+        Mock Invoke-GHRestMethod { return @{ pull_request_url = 'https://api.github.com/repos/o/r/pulls/1' } } -ModuleName ActionHelpers
+        $result = Get-PullRequestReviewComment -url 'https://api.github.com/repos/o/r/pulls/comments/1' -expectedApiBaseUrl 'https://api.github.com'
+        $result.pull_request_url | Should -Be 'https://api.github.com/repos/o/r/pulls/1'
+    }
+
+    It 'Propagates API errors to the caller' {
+        Mock Invoke-GHRestMethod { throw 'Not Found' } -ModuleName ActionHelpers
+        { Get-PullRequestReviewComment -url 'https://api.github.com/repos/o/r/pulls/comments/1' -expectedApiBaseUrl 'https://api.github.com' } | Should -Throw '*Not Found*'
+    }
+}
+
+Describe 'Get-PullRequestCommitSha' {
+    It 'Follows nextLink pagination on the pull request commits endpoint' {
+        Mock Invoke-GHRestMethod {
+            if ($Uri -like '*page=2') { return @{ result = @(@{ sha = 'b' }); nextLink = $null } }
+            return @{ result = @(@{ sha = 'a' }); nextLink = 'https://api.github.com/repos/o/r/pulls/1/commits?per_page=100&page=2' }
+        } -ModuleName ActionHelpers
+        $pr = @{ commits = 2; base = @{ ref = 'main' }; head = @{ sha = 'head' } }
+
+        $result = @(Get-PullRequestCommitSha -pullRequest $pr -owner 'o' -repo 'r' -pullNumber 1)
+        $result | Should -Be @('a', 'b')
+        Should -Invoke Invoke-GHRestMethod -Times 0 -ModuleName ActionHelpers -ParameterFilter { $Uri -like '*/compare/*' }
+    }
+
+    It 'Falls back to the compare endpoint when the commit list is truncated' {
+        Mock Invoke-GHRestMethod {
+            if ($Uri -like '*/compare/*') { return @{ result = @{ commits = @(1..300 | ForEach-Object { @{ sha = "s$_" } }) }; nextLink = $null } }
+            return @{ result = @(1..250 | ForEach-Object { @{ sha = "s$_" } }); nextLink = $null }
+        } -ModuleName ActionHelpers
+        $pr = @{ commits = 300; base = @{ ref = 'releases/v1' }; head = @{ sha = 'head' } }
+
+        $result = @(Get-PullRequestCommitSha -pullRequest $pr -owner 'o' -repo 'r' -pullNumber 1)
+        $result.Count | Should -Be 300
+        Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter { $Uri -like 'https://api.github.com/repos/o/r/compare/releases%2Fv1...head*' }
+    }
+
+    It 'Propagates API errors to the caller' {
+        Mock Invoke-GHRestMethod { throw 'Server Error' } -ModuleName ActionHelpers
+        $pr = @{ commits = 1; base = @{ ref = 'main' }; head = @{ sha = 'head' } }
+        { Get-PullRequestCommitSha -pullRequest $pr -owner 'o' -repo 'r' -pullNumber 1 } | Should -Throw '*Server Error*'
+    }
+}
+
+Describe 'Get-EvaluationWarningMarkdown' {
+    It 'Returns an empty string when there are no warnings' {
+        Get-EvaluationWarningMarkdown -Warnings @() | Should -Be ''
+    }
+
+    It 'Lists each warning on a single line' {
+        $result = Get-EvaluationWarningMarkdown -Warnings @("first`r`nerror", 'second')
+        $result | Should -BeLike '*> `[!WARNING`]*'
+        $result | Should -BeLike "*> - first error`n*"
+        $result | Should -BeLike "*> - second`n*"
     }
 }
 
