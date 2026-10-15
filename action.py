@@ -26,10 +26,12 @@ class EvaluationError(Exception):
 
     The caller decides (via the fail-closed setting) whether the error fails the workflow
     or is reported as a warning. status_code is the HTTP status code, when available.
+    partial_result holds any data that was read before the error (for example, earlier pages), when available.
     """
-    def __init__(self, message, status_code=None):
+    def __init__(self, message, status_code=None, partial_result=None):
         super().__init__(message)
         self.status_code = status_code
+        self.partial_result = partial_result
 
 
 def _status_code(err, response=None):
@@ -271,7 +273,8 @@ def get_locations_for_alert(github_token, repo_owner, repo_name, alert_number, h
             raise EvaluationError(
                 f"Error getting '{repo_owner}/{repo_name}' secret scanning alert #{alert_number} locations. "
                 f"Ensure the access token has at least read access to secret scanning alerts. (StatusCode:{status_code} Message:{err})",
-                status_code
+                status_code,
+                partial_result=all_locations
             ) from err
     return all_locations
 
@@ -558,9 +561,9 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
         except EvaluationError as err:
             handle_evaluation_error(err, fail_closed, evaluation_warnings)
-            alerts_reviewed += 1
-            continue
-        alert_locations_by_number[alert['number']] = alert_locations
+            # fail-closed is disabled: still review any location pages that were read before the error
+            alert_locations = err.partial_result or []
+        matched_count = len(alerts_in_pr)
         for location in alert_locations:
             if location['type'] == 'commit':
                 if location['details']['commit_sha'] in commit_shas:
@@ -623,6 +626,10 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
                     alerts_in_pr.append(alert)
                     break
+
+        # Keep locations only for matching alerts, which are the only ones used in the report
+        if len(alerts_in_pr) > matched_count:
+            alert_locations_by_number[alert['number']] = alert_locations
 
         # Increment the counter and log the progress
         alerts_reviewed += 1
