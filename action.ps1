@@ -346,6 +346,7 @@ foreach ($alert in $alerts) {
     - note: details.commit_sha - SHA of the commit where the secret was detected
     #>
     $repoAlertLocationUrl = [uri]"$($alert.locations_url)?per_page=$perPage"
+    $locations = @()
     try {
         $locationsResult = Invoke-GHRestMethod -Method GET -Uri $repoAlertLocationUrl.AbsoluteUri -ExtendedResult $true
         $locations = $locationsResult.result
@@ -359,8 +360,7 @@ foreach ($alert in $alerts) {
     catch {
         Write-ActionDebug "Alert number: $($alert.number), locations_url: '$($alert.locations_url)'"
         Invoke-EvaluationError -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert #$($alert.number) locations.  Ensure the 'token' input has proper permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
-        $alertCount++
-        continue
+        # FailClosed is disabled: still review any location pages that were read before the error
     }
 
     $locationMatches = @()

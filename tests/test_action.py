@@ -297,6 +297,24 @@ class TestCommitShasForPr:
         assert "page=2" in mock_get.call_args_list[1][0][0]
 
 
+class TestGetLocationsForAlert:
+    """Tests for get_locations_for_alert error handling."""
+
+    @patch("action.requests.get")
+    def test_error_on_later_page_keeps_earlier_pages(self, mock_get, github_com_api):
+        page1 = _mock_response([{"type": "commit", "details": {"commit_sha": "a"}}])
+        page1.headers = {"Link": '<https://api.github.com/x?page=2>; rel="next"'}
+        page2 = _mock_response(None, status_code=502)
+        page2.raise_for_status.side_effect = requests.exceptions.HTTPError("502 Bad Gateway", response=page2)
+        mock_get.side_effect = [page1, page2]
+
+        with pytest.raises(action.EvaluationError) as exc:
+            action.get_locations_for_alert("token", "owner", "repo", 1, None, None, True)
+
+        assert exc.value.status_code == 502
+        assert exc.value.partial_result == [{"type": "commit", "details": {"commit_sha": "a"}}]
+
+
 class TestGetPullRequestReviewComment:
     """Tests for get_pull_request_review_comment error handling."""
 
@@ -451,6 +469,36 @@ class TestMainFailClosed:
         mock_review.side_effect = action.EvaluationError("Not Found", 404)
 
         assert self._run(fail_closed, fail_on_alert=True) == expected_exit
+
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_partial_locations_are_reviewed_when_not_fail_closed(self, mock_pr, _shas, mock_alerts, mock_locations, _dismissal, env):
+        """Location pages read before an error are still reviewed, so fail-on-alert still applies."""
+        summary, output = env
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        page_one = [{"type": "commit", "details": {"commit_sha": "abc", "path": "a.txt", "start_line": 1, "start_column": 1}}]
+        mock_locations.side_effect = action.EvaluationError("Error getting locations page 2", 500, partial_result=page_one)
+
+        assert self._run(False, fail_on_alert=True) == 1
+        assert "alerts=[]" not in output.read_text()
+        text = summary.read_text(encoding="utf-8")
+        assert "Found [1] secret scanning alert " in text
+        assert "Error getting locations page 2" in text
+
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_partial_locations_error_fails_when_fail_closed(self, mock_pr, _shas, mock_alerts, mock_locations, env):
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.side_effect = action.EvaluationError("Error getting locations page 2", 500, partial_result=[])
+
+        assert self._run(True) == 1
 
     @patch("action.get_dismissal_request_for_alert", return_value=None)
     @patch("action.get_locations_for_alert")
