@@ -335,6 +335,20 @@ Describe 'Get-PullRequestCommitSha' {
         Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter { $Uri -like 'https://api.github.com/repos/o/r/compare/releases%2Fv1...head*' }
     }
 
+    It 'Returns only commit SHAs when debug output is written (compare returns fewer than expected)' {
+        # GitHubActions' Write-ActionDebug returns the workflow command string on the success stream
+        Mock Write-ActionDebug { "::debug::$Message" } -ModuleName ActionHelpers
+        Mock Invoke-GHRestMethod {
+            if ($Uri -like '*/compare/*') { return @{ result = @{ commits = @(1..299 | ForEach-Object { @{ sha = "s$_" } }) }; nextLink = $null } }
+            return @{ result = @(1..250 | ForEach-Object { @{ sha = "s$_" } }); nextLink = $null }
+        } -ModuleName ActionHelpers
+        $pr = @{ commits = 300; base = @{ ref = 'main' }; head = @{ sha = 'head' } }
+
+        $result = @(Get-PullRequestCommitSha -pullRequest $pr -owner 'o' -repo 'r' -pullNumber 1)
+        $result.Count | Should -Be 299
+        $result | Where-Object { $_ -like '::debug::*' } | Should -BeNullOrEmpty
+    }
+
     It 'Propagates API errors to the caller' {
         Mock Invoke-GHRestMethod { throw 'Server Error' } -ModuleName ActionHelpers
         $pr = @{ commits = 1; base = @{ ref = 'main' }; head = @{ sha = 'head' } }
