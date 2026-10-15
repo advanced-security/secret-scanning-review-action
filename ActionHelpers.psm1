@@ -319,7 +319,7 @@ function Get-ErrorStatusCode {
         }
     }
     catch {
-        Write-ActionDebug "Unable to read HTTP status code from error: $($_.Exception.Message)"
+        Write-ActionDebug "Unable to read HTTP status code from error: $($_.Exception.Message)" | Out-Host
     }
     return $null
 }
@@ -413,7 +413,8 @@ function Get-PullRequestCommitSha {
 
     $expectedCount = [int]$pullRequest.commits
     if ($commitShas.Count -lt $expectedCount -and $pullRequest.base.ref -and $pullRequest.head.sha) {
-        Write-ActionDebug "PR#$pullNumber reports $expectedCount commits but only $($commitShas.Count) were listed. Reading commits from the compare endpoint."
+        # Send-ActionCommand returns the workflow command string, so route it to the host to keep it out of the returned SHAs
+        Write-ActionDebug "PR#$pullNumber reports $expectedCount commits but only $($commitShas.Count) were listed. Reading commits from the compare endpoint." | Out-Host
         $compareShas = [System.Collections.Generic.List[string]]::new()
         $url = "$baseUrl/repos/$owner/$repo/compare/$([uri]::EscapeDataString($pullRequest.base.ref))...$($pullRequest.head.sha)?per_page=100"
         while ($url) {
