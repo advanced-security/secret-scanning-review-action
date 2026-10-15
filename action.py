@@ -5,6 +5,7 @@ import logging
 import requests
 import argparse
 import re
+import sys
 import json
 import subprocess
 from datetime import datetime, timezone
@@ -60,7 +61,7 @@ def handle_evaluation_error(error, fail_closed, warnings):
     message = str(error)
     if fail_closed:
         print(f"::error::{escape_command_data(message)}")
-        exit(1)
+        sys.exit(1)
     print(f"::warning::{escape_command_data(message + ' (fail-closed is disabled, continuing)')}")
     warnings.append(message)
 
@@ -97,7 +98,7 @@ def complete_incomplete_review(pull_request_number, pull_request, warnings, disa
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write("alerts=[]\n")
     print(f"::warning::{escape_command_data(incomplete_summary)}")
-    exit(0)
+    sys.exit(0)
 
 def get_commits_for_pr(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls?apiVersion=2022-11-28#list-commits-on-a-pull-request
