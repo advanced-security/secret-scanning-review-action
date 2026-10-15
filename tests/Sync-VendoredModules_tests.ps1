@@ -30,11 +30,37 @@ BeforeAll {
         $path
     }
 
+    function script:Get-TestContentDigest {
+        param([string]$Path)
+
+        # Independent implementation of the documented contentSha512 format.
+        $root = (Get-Item -LiteralPath $Path).FullName
+        $lines = [System.Collections.Generic.List[string]]::new()
+        foreach ($file in (Get-ChildItem -LiteralPath $root -Recurse -File -Force)) {
+            $relativePath = [System.IO.Path]::GetRelativePath($root, $file.FullName).Replace('\', '/')
+            $fileHash = [Convert]::ToBase64String([System.Security.Cryptography.SHA512]::HashData([System.IO.File]::ReadAllBytes($file.FullName)))
+            $lines.Add("$relativePath`t$fileHash")
+        }
+        $lines.Sort([System.StringComparer]::Ordinal)
+        [Convert]::ToBase64String([System.Security.Cryptography.SHA512]::HashData([System.Text.Encoding]::UTF8.GetBytes($lines -join "`n")))
+    }
+
+    # Writes a lock file. ContentSha512 defaults to the digest of the module folder when it already exists.
     function script:New-LockFile {
         param([System.Collections.Specialized.OrderedDictionary]$Entries)
 
         $lines = foreach ($name in $Entries.Keys) {
-            "    '$name' = @{ version = '$($Entries[$name].Version)'; sha512 = '$($Entries[$name].Sha512)' }"
+            $entry = $Entries[$name]
+            $content = if ($entry.ContainsKey('ContentSha512')) {
+                $entry.ContentSha512
+            }
+            elseif (Test-Path -LiteralPath (Get-TestPath 'modules', $name, $entry.Version) -PathType Container) {
+                Get-TestContentDigest (Get-TestPath 'modules', $name, $entry.Version)
+            }
+            else {
+                $FakeSha
+            }
+            "    '$name' = @{ version = '$($entry.Version)'; sha512 = '$($entry.Sha512)'; contentSha512 = '$content' }"
         }
         Set-Content -Path (Get-TestPath 'requirements.lock.psd1') -Value (@('@{') + $lines + @('}'))
     }
@@ -112,9 +138,9 @@ Describe 'Sync-VendoredModules -Check' {
 
     It 'passes when vendored modules and lock match the pinned versions' {
         $req = New-RequirementFile ([ordered]@{ ModA = '[1.0.0]'; ModB = '[2.1.0.3]' })
-        New-LockFile ([ordered]@{ ModA = @{ Version = '1.0.0'; Sha512 = $FakeSha }; ModB = @{ Version = '2.1.0.3'; Sha512 = $FakeSha } })
         New-FakeModule -Name ModA -Version 1.0.0
         New-FakeModule -Name ModB -Version 2.1.0.3
+        New-LockFile ([ordered]@{ ModA = @{ Version = '1.0.0'; Sha512 = $FakeSha }; ModB = @{ Version = '2.1.0.3'; Sha512 = $FakeSha } })
 
         Invoke-Sync $req -Check | Should -Match 'match requirements.psd1: ModA 1.0.0, ModB 2.1.0.3'
     }
@@ -127,6 +153,7 @@ Describe 'Sync-VendoredModules -Check' {
         It 'ignores files at the root of the modules folder' {
             $req = New-RequirementFile ([ordered]@{ ModA = '[1.0.0]' })
             New-FakeModule -Name ModA -Version 1.0.0
+            New-LockFile ([ordered]@{ ModA = @{ Version = '1.0.0'; Sha512 = $FakeSha } })
             Set-Content -Path (Get-TestPath 'modules', 'ModA.LICENSE.txt') -Value 'license'
 
             { Invoke-Sync $req -Check } | Should -Not -Throw
@@ -184,9 +211,9 @@ Describe 'Sync-VendoredModules -Check' {
 
         It 'passes when a required module is also pinned' {
             $req = New-RequirementFile ([ordered]@{ ModA = '[1.0.0]'; ModDep = '[3.0.0]' })
-            New-LockFile ([ordered]@{ ModA = @{ Version = '1.0.0'; Sha512 = $FakeSha }; ModDep = @{ Version = '3.0.0'; Sha512 = $FakeSha } })
             New-FakeModule -Name ModA -Version 1.0.0 -RequiredModules 'ModDep'
             New-FakeModule -Name ModDep -Version 3.0.0
+            New-LockFile ([ordered]@{ ModA = @{ Version = '1.0.0'; Sha512 = $FakeSha }; ModDep = @{ Version = '3.0.0'; Sha512 = $FakeSha } })
 
             { Invoke-Sync $req -Check } | Should -Not -Throw
         }
@@ -257,6 +284,60 @@ Describe 'Sync-VendoredModules -Check' {
 
             { Invoke-Sync $req -Check } | Should -Throw '*Lock file entry ''Old'' is not pinned*'
         }
+
+        It 'fails when the lock entry has no valid contentSha512' {
+            $req = New-RequirementFile ([ordered]@{ ModA = '[1.0.0]' })
+            New-LockFile ([ordered]@{ ModA = @{ Version = '1.0.0'; Sha512 = $FakeSha; ContentSha512 = '' } })
+
+            { Invoke-Sync $req -Check } | Should -Throw '*valid base64 contentSha512*'
+        }
+    }
+
+    Context 'vendored file contents' {
+        BeforeEach {
+            New-FakeModule -Name ModA -Version 1.0.0
+            Set-Content -Path (Get-TestPath 'modules', 'ModA', '1.0.0', 'ModA.psm1') -Value 'function Get-A { 1 }'
+            New-Item -Path (Get-TestPath 'modules', 'ModA', '1.0.0', 'Private') -ItemType Directory | Out-Null
+            Set-Content -Path (Get-TestPath 'modules', 'ModA', '1.0.0', 'Private', 'Helper.ps1') -Value '# helper'
+            New-LockFile ([ordered]@{ ModA = @{ Version = '1.0.0'; Sha512 = $FakeSha } })
+            New-RequirementFile ([ordered]@{ ModA = '[1.0.0]' }) | Out-Null
+        }
+
+        It 'passes when the files match the recorded digest' {
+            { Invoke-Sync (Get-TestPath 'requirements.psd1') -Check } | Should -Not -Throw
+        }
+
+        It 'fails when a vendored file is modified' {
+            Add-Content -Path (Get-TestPath 'modules', 'ModA', '1.0.0', 'ModA.psm1') -Value 'function Get-B { 2 }'
+
+            { Invoke-Sync (Get-TestPath 'requirements.psd1') -Check } | Should -Throw '*ModA 1.0.0 files*do not match the lock file contentSha512*'
+        }
+
+        It 'fails when only the line endings of a vendored file change' {
+            $path = Get-TestPath 'modules', 'ModA', '1.0.0', 'ModA.psm1'
+            [System.IO.File]::WriteAllText($path, ([System.IO.File]::ReadAllText($path) -replace '\r?\n', "`r`n"))
+            [System.IO.File]::AppendAllText($path, "`r`n")
+
+            { Invoke-Sync (Get-TestPath 'requirements.psd1') -Check } | Should -Throw '*do not match the lock file contentSha512*'
+        }
+
+        It 'fails when a vendored file is removed' {
+            Remove-Item -Path (Get-TestPath 'modules', 'ModA', '1.0.0', 'Private', 'Helper.ps1')
+
+            { Invoke-Sync (Get-TestPath 'requirements.psd1') -Check } | Should -Throw '*do not match the lock file contentSha512*'
+        }
+
+        It 'fails when a file is added to a vendored module' {
+            Set-Content -Path (Get-TestPath 'modules', 'ModA', '1.0.0', 'Private', 'Extra.ps1') -Value '# extra'
+
+            { Invoke-Sync (Get-TestPath 'requirements.psd1') -Check } | Should -Throw '*do not match the lock file contentSha512*'
+        }
+
+        It 'fails when a vendored file is renamed' {
+            Rename-Item -Path (Get-TestPath 'modules', 'ModA', '1.0.0', 'Private', 'Helper.ps1') -NewName 'Helper2.ps1'
+
+            { Invoke-Sync (Get-TestPath 'requirements.psd1') -Check } | Should -Throw '*do not match the lock file contentSha512*'
+        }
     }
 }
 
@@ -300,6 +381,7 @@ Describe 'Sync-VendoredModules (sync)' {
         $lock = Import-PowerShellDataFile (Get-TestPath 'requirements.lock.psd1')
         $lock.ModA.version | Should -Be '1.0.0'
         $lock.ModA.sha512 | Should -Be $FakeGalleryHash['ModA|1.0.0']
+        $lock.ModA.contentSha512 | Should -Be (Get-TestContentDigest (Get-TestPath 'modules', 'ModA', '1.0.0'))
         Get-TestPath 'modules', 'ModA', '1.0.0', 'ModA.psd1' | Should -Exist
         @(Get-ChildItem (Get-TestPath 'modules', 'ModA', '1.0.0') -Force).Name | Should -Be @('ModA.psd1')
     }

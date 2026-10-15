@@ -28,7 +28,7 @@ on the different ways you can update your PR so that we can merge it.
 The PowerShell runtime loads its modules only from the vendored [`modules/`](modules) folder. Three files work together:
 
 - [`requirements.psd1`](requirements.psd1): the pinned versions (edit this one).
-- [`requirements.lock.psd1`](requirements.lock.psd1): the SHA512 of each pinned package. Generated, do not edit by hand.
+- [`requirements.lock.psd1`](requirements.lock.psd1): the SHA512 of each pinned package (`sha512`) and a digest of the files extracted into `modules/<name>/<version>` (`contentSha512`). Generated, do not edit by hand.
 - [`scripts/Sync-VendoredModules.ps1`](scripts/Sync-VendoredModules.ps1): downloads each pinned package, verifies its SHA512, and extracts it into `modules/`.
 
 To bump a module:
@@ -37,7 +37,7 @@ To bump a module:
 2. The [Vendor PowerShell Modules](.github/workflows/vendor-pwsh-modules.yml) workflow runs the sync script and opens a PR with the updated `modules/` and `requirements.lock.psd1`. A new version is only accepted if its hash matches the one the PowerShell Gallery publishes; a version already in the lock file must match the recorded hash.
 3. Review the module diff, then close and reopen the PR so CI runs (PRs opened with `GITHUB_TOKEN` do not trigger workflows), and merge it.
 
-You can also run `./scripts/Sync-VendoredModules.ps1` locally and commit the result in the same PR. Run `./scripts/Sync-VendoredModules.ps1 -Check` to verify `modules/` and the lock file match `requirements.psd1` (offline). The Release workflow runs the same check and refuses to publish on a mismatch.
+You can also run `./scripts/Sync-VendoredModules.ps1` locally and commit the result in the same PR. Run `./scripts/Sync-VendoredModules.ps1 -Check` to verify (offline) that `modules/` and the lock file match `requirements.psd1` and that no vendored file was modified, added, or removed. The Release workflow runs the same check and refuses to publish on a mismatch. `.gitattributes` marks `modules/` as binary so git does not rewrite line endings in the vendored files.
 
 ## Floating version tag
 

@@ -310,7 +310,7 @@ sequenceDiagram
 
 - Powershell Dependencies (vendored in [`modules/`](modules); nothing is downloaded from the PowerShell Gallery at runtime)
   - Versions are pinned in [`requirements.psd1`](requirements.psd1) (PSResourceGet [`-RequiredResourceFile`](https://learn.microsoft.com/powershell/module/microsoft.powershell.psresourceget/install-psresource) format)
-  - The SHA512 of each vendored package is recorded in [`requirements.lock.psd1`](requirements.lock.psd1). See [CONTRIBUTING.md](CONTRIBUTING.md#updating-powershell-module-dependencies) for the update flow.
+  - The SHA512 of each vendored package, and a digest of its extracted files, are recorded in [`requirements.lock.psd1`](requirements.lock.psd1). See [CONTRIBUTING.md](CONTRIBUTING.md#updating-powershell-module-dependencies) for the update flow.
   - `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
     - by [@microsoft](https://github.com/microsoft)
     - NOTE: [Telemetry is collected via Application Insights](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry)
