@@ -34,7 +34,7 @@ jobs:
           $config = New-PesterConfiguration
 
           # Tests location
-          $config.Run.Path = 'tests/Action_tests.ps1'
+          $config.Run.Path = @('tests/Action_tests.ps1', 'tests/Sync-VendoredModules_tests.ps1')
           $config.Filter.ExcludeTag = @('SkipCI')
           $config.Run.Exit = $true
 
@@ -45,7 +45,7 @@ jobs:
 
           # Emit Cobertura XML coverage for the action scripts
           $config.CodeCoverage.Enabled = $true
-          $config.CodeCoverage.Path = @('action.ps1', 'ActionHelpers.psm1')
+          $config.CodeCoverage.Path = @('action.ps1', 'ActionHelpers.psm1', 'scripts/Sync-VendoredModules.ps1')
           $config.CodeCoverage.OutputFormat = 'Cobertura'
           $config.CodeCoverage.OutputPath = 'TestResults/coverage.cobertura.xml'
 
@@ -144,7 +144,7 @@ jobs:
           $config = New-PesterConfiguration
 
           # Tests location
-          $config.Run.Path = 'tests/Action_tests.ps1'
+          $config.Run.Path = @('tests/Action_tests.ps1', 'tests/Sync-VendoredModules_tests.ps1')
           $config.Filter.ExcludeTag = @('SkipCI')
           $config.Run.Exit = $true
 
@@ -155,7 +155,7 @@ jobs:
 
           # Emit Cobertura XML coverage for the action scripts
           $config.CodeCoverage.Enabled = $true
-          $config.CodeCoverage.Path = @('action.ps1', 'ActionHelpers.psm1')
+          $config.CodeCoverage.Path = @('action.ps1', 'ActionHelpers.psm1', 'scripts/Sync-VendoredModules.ps1')
           $config.CodeCoverage.OutputFormat = 'Cobertura'
           $config.CodeCoverage.OutputPath = 'TestResults/coverage.cobertura.xml'
 

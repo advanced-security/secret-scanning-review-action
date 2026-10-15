@@ -37,6 +37,8 @@ jobs:
           path: .\
           recurse: true
           output: PSScriptAnalyzer.sarif
+          # Vendored third-party modules are not analyzed
+          ignorePattern: 'modules[\\/]'
 
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file
