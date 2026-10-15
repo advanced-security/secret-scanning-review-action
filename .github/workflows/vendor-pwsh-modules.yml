@@ -44,7 +44,7 @@ jobs:
 
             Each package's SHA512 was verified before extraction: versions already in `requirements.lock.psd1` must match the recorded hash, and new versions must match the hash the PowerShell Gallery publishes for that package.
 
-            - [ ] Review the module changes (changelogs / diff) and any new `sha512` entries in `requirements.lock.psd1`
+            - [ ] Review the module changes (changelogs / diff) and any new `sha512` / `contentSha512` entries in `requirements.lock.psd1`
             - [ ] Merge before running the Release workflow (it verifies `./modules` matches `requirements.psd1`)
 
             > [!NOTE]

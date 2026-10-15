@@ -100,11 +100,21 @@ $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 $requiredModules = Import-PowerShellDataFile -Path (Join-Path $scriptPath 'requirements.psd1')
 foreach ($moduleName in ($requiredModules.Keys | Sort-Object)) {
     $requiredVersion = $requiredModules[$moduleName].version.Trim('[', ']')
-    $vendoredManifest = Join-Path $scriptPath 'modules' $moduleName $requiredVersion "$moduleName.psd1"
+    $vendoredManifest = Join-Path -Path $scriptPath -ChildPath 'modules' -AdditionalChildPath $moduleName, $requiredVersion, "$moduleName.psd1"
     if (-not (Test-Path -Path $vendoredManifest -PathType Leaf)) {
         throw "$moduleName $requiredVersion is not vendored at '$vendoredManifest'. Run ./scripts/Sync-VendoredModules.ps1 to refresh ./modules."
     }
-    Import-Module -Name $vendoredManifest -Force
+    # PowerShellForGitHub starts a background PowerShell Gallery update check (Start-Job) while it is
+    # being imported, before Set-GitHubConfiguration -DisableUpdateCheck below can take effect. The
+    # module reads its settings only from the user profile, so suppress Start-Job for the import
+    # instead of writing persistent configuration on the runner.
+    function global:Start-Job { }
+    try {
+        Import-Module -Name $vendoredManifest -Force
+    }
+    finally {
+        Remove-Item -Path Function:\Start-Job
+    }
 }
 
 # Import helper functions module
