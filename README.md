@@ -308,7 +308,9 @@ sequenceDiagram
 - GitHub Dependencies
   - GitHub [REST APIs](#rest-apis)
 
-- Powershell Dependencies
+- Powershell Dependencies (vendored in [`modules/`](modules); nothing is downloaded from the PowerShell Gallery at runtime)
+  - Versions are pinned in [`requirements.psd1`](requirements.psd1) (PSResourceGet [`-RequiredResourceFile`](https://learn.microsoft.com/powershell/module/microsoft.powershell.psresourceget/install-psresource) format)
+  - The SHA512 of each vendored package is recorded in [`requirements.lock.psd1`](requirements.lock.psd1). See [CONTRIBUTING.md](CONTRIBUTING.md#updating-powershell-module-dependencies) for the update flow.
   - `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
     - by [@microsoft](https://github.com/microsoft)
     - NOTE: [Telemetry is collected via Application Insights](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry)
@@ -340,6 +342,8 @@ sequenceDiagram
 ### Why are there two runtime options and what's the difference?
 
 The primary difference is the underlying language and the dependencies that are required to be installed on the runner.  The `powershell` runtime is the default and is the most tested.  The `python` runtime is a newer addition for those who may not have powershell installed on their self-hosted runners.
+
+The `powershell` runtime ships its PowerShell modules inside the action (see [Dependencies](#dependencies)), so it does not need access to the PowerShell Gallery and does not change the runner's PowerShell repository settings. It only needs `pwsh` on the runner.
 
 The `python` runtime includes some additional configuration options for enterprise environments:
 
