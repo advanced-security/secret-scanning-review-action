@@ -96,7 +96,7 @@ By default, when any secrets are found the Action will also add a comment to the
 | `runtime` | No | Runtime to use for the action. Options: `powershell` or `python`. | `powershell` |
 | `skip-closed-alerts` | No | Only process open alerts. | `false` |
 | `disable-workflow-summary` | No | Disable the workflow summary markdown table output. | `false` |
-| `fail-closed` | No | Fail the workflow when a GitHub API error prevents a complete review (for example, the pull request, its commits, alerts, alert locations, or PR comments could not be read). When `false`, these errors are reported as warnings and listed in the workflow summary and PR comment, and the review continues with the data that could be read. See [Handling API errors](#handling-api-errors). | `true` |
+| `fail-closed` | No | Fail the workflow when a GitHub API error prevents a complete review (for example, the pull request, its commits, alerts, alert locations, or PR comments could not be read). When `false`, these errors are reported as warnings and listed in the workflow summary (and in the PR comment, when one is posted), and the review continues with the data that could be read. See [Handling API errors](#handling-api-errors). | `true` |
 | `python-http-proxy-url` | No | HTTP proxy URL for the python runtime. Example: `http://proxy.example.com:1234` | `""` |
 | `python-https-proxy-url` | No | HTTPS proxy URL for the python runtime. Example: `http://proxy.example.com:5678` | `""` |
 | `python-verify-ssl` | No | Enable/disable SSL verification for the python runtime. ⚠️ Disabling is NOT recommended for production. | `true` |
@@ -114,7 +114,7 @@ By default, when any secrets are found the Action will also add a comment to the
 Both runtimes handle GitHub API errors the same way, controlled by `fail-closed`:
 
 - **`fail-closed: true` (default)**: any API error that prevents a complete review fails the workflow. Use this when the action is a required status check, so an incomplete review never reports success.
-- **`fail-closed: false`**: API errors are reported as `warning` annotations and listed in the workflow summary and PR comment, and the step does not fail because of them. Alerts that could still be evaluated are reported as usual, and `fail-on-alert` still fails the workflow when a matching alert is found. If a required lookup fails (the pull request, its commits, or the secret scanning alerts), the review ends early with an "incomplete" summary and an empty `alerts` output.
+- **`fail-closed: false`**: API errors are reported as `warning` annotations and listed in the workflow summary, and the step does not fail because of them. The PR comment is only posted when matching alerts are found, so warnings appear there only in that case. Alerts that could still be evaluated are reported as usual, and `fail-on-alert` still fails the workflow when a matching alert is found. If a required lookup fails (the pull request, its commits, or the secret scanning alerts), the review ends early with an "incomplete" workflow summary, an empty `alerts` output, and no PR comment.
 
 Regardless of `fail-closed`:
 

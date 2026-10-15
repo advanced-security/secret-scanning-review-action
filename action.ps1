@@ -41,9 +41,10 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
 .PARAMETER FailClosed
         If true, any GitHub API error that prevents a complete review (pull request, commits, alerts, alert locations,
         PR comment and review comment lookups, or writing the PR comment) fails the action workflow via non-zero exit code.
-        If false, these errors are reported as warnings (annotations, step summary, and PR comment) and the review
-        continues with the data that could be retrieved. If a required lookup fails (pull request, commits, or alerts),
-        the review is reported as incomplete and the action exits with code 0.
+        If false, these errors are reported as warnings (annotations and step summary, plus the PR comment when one is
+        posted because matching alerts were found) and the review continues with the data that could be retrieved.
+        If a required lookup fails (pull request, commits, or alerts), the review is reported as incomplete, no PR
+        comment is posted, and the action exits with code 0.
         Dismissal request lookups are informational only and never fail the workflow.
         Configuration errors (missing token, non pull_request event) always fail the workflow.
         Default is true.
