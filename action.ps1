@@ -51,6 +51,11 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         Default is false.
 
 .NOTES
+Dependencies
+    - Module versions are pinned in requirements.psd1 (PSResourceGet required resource file format)
+    - Modules are vendored in ./modules and imported by path; nothing is downloaded from the PowerShell Gallery at runtime
+    - Refresh ./modules with scripts/Sync-VendoredModules.ps1 (the release workflow verifies they match via -Check)
+
 Features
     - Actions compatible
         - GitHubActions module ( https://github.com/ebekker/pwsh-github-action-base)
@@ -87,34 +92,26 @@ param(
 # Includes non-provider patterns and copilot patterns
 Set-Variable -Name GENERIC_SECRET_TYPES -Value "password,ec_private_key,generic_private_key,http_basic_authentication_header,http_bearer_authentication_header,mongodb_connection_string,mysql_connection_url,openssh_private_key,pgp_private_key,postgres_connection_string,rsa_private_key" -Option ReadOnly -Scope Script
 
-# Handle `Untrusted repository` prompt
-Set-PSRepository PSGallery -InstallationPolicy Trusted
+$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-#check if GitHubActions module is installed
-if (Get-Module -ListAvailable -Name GitHubActions -ErrorAction SilentlyContinue) {
-    Write-ActionDebug "GitHubActions module is installed"
-}
-else {
-    #directly to output here before module loaded to support Write-ActionInfo
-    Write-Output "GitHubActions module is not installed.  Installing from Gallery..."
-    Install-Module -Name GitHubActions -RequiredVersion '1.1.0.2'
+# Load the exact module versions pinned in requirements.psd1 from the copies vendored in ./modules
+# (see scripts/Sync-VendoredModules.ps1). Modules are never downloaded at runtime, so the code that runs
+# is exactly what is committed at the action ref the workflow pinned.
+$requiredModules = Import-PowerShellDataFile -Path (Join-Path $scriptPath 'requirements.psd1')
+foreach ($moduleName in ($requiredModules.Keys | Sort-Object)) {
+    $requiredVersion = $requiredModules[$moduleName].version.Trim('[', ']')
+    $vendoredManifest = Join-Path $scriptPath 'modules' $moduleName $requiredVersion "$moduleName.psd1"
+    if (-not (Test-Path -Path $vendoredManifest -PathType Leaf)) {
+        throw "$moduleName $requiredVersion is not vendored at '$vendoredManifest'. Run ./scripts/Sync-VendoredModules.ps1 to refresh ./modules."
+    }
+    Import-Module -Name $vendoredManifest -Force
 }
 
 # Import helper functions module
-$scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 Import-Module (Join-Path $scriptPath 'ActionHelpers.psm1') -Force
 
-#check if PowerShellForGitHub module is installed
-if (Get-Module -ListAvailable -Name PowerShellForGitHub -ErrorAction SilentlyContinue) {
-    Write-ActionDebug "PowerShellForGitHub module is installed"
-}
-else {
-    Write-ActionInfo "PowerShellForGitHub module is not installed.  Installing from Gallery..."
-    Install-Module -Name PowerShellForGitHub -RequiredVersion '0.17.0'
-
-    #Disable Telemetry since we are accessing sensitive apis - https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry
-    Set-GitHubConfiguration -DisableTelemetry -SessionOnly
-}
+#Disable Telemetry and the Gallery update check since we are accessing sensitive apis - https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry
+Set-GitHubConfiguration -DisableTelemetry -DisableUpdateCheck -SessionOnly
 
 #check if GITHUB_TOKEN is set
 Write-ActionDebug "GitHubToken parameter is $([String]::IsNullOrWhiteSpace($GitHubToken) ? "NOT SET" : "SET" ). $($null -ne $env:GITHUB_TOKEN ? "Overridden by environment variable GITHUB_TOKEN" : $null)"

@@ -24,7 +24,19 @@ on:
         default: false
 
 jobs:
+  verify-vendored-modules:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify ./modules matches requirements.psd1
+        shell: pwsh
+        run: ./scripts/Sync-VendoredModules.ps1 -Check
+
   release:
+    needs: verify-vendored-modules
     uses: advanced-security/reusable-workflows/.github/workflows/release.yml@f6e68ac73181115289fb21b6aa47b95b3b51523a # v0.3.1
     with:
       version: ${{ inputs.version }}

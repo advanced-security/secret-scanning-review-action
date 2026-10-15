@@ -69,6 +69,8 @@ When adding new features or inputs:
 - Use Write-ActionInfo, Write-ActionDebug, Write-ActionWarning for logging
 - Follow existing error handling patterns with try/catch
 - Clear sensitive variables after use (e.g., `$GitHubToken = $null`)
+- Modules are loaded only from the vendored `modules/` folder; never add runtime `Install-Module`/`Install-PSResource` or `Set-PSRepository` calls
+- To change a module version, edit `requirements.psd1` and run `scripts/Sync-VendoredModules.ps1` (it updates `modules/` and the SHA512 lock in `requirements.lock.psd1`); never edit `modules/` or the lock file by hand
 
 ### action.py
 - Use logging module for output
