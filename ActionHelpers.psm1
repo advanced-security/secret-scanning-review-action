@@ -245,8 +245,10 @@ Retrieves all comments for a pull request.
 
 .DESCRIPTION
 Fetches all comments from a pull request using pagination.
-Returns an empty array if the API call fails.
-
+Errors are propagated to the caller so it can decide (via the fail-closed setting)
+whether a failed lookup should fail the review or be reported as a warning.
+Comments read before the error are attached to the exception as
+$_.Exception.Data['PartialResult'] so the caller can still review them.
 .PARAMETER owner
 The repository owner.
 
@@ -278,23 +280,192 @@ function Get-PullRequestComment {
     $baseUrl = $apiBaseUrl.TrimEnd('/')
     $commentUrl = "$baseUrl/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
 
-    try {
-        while ($true) {
-            $comments = Invoke-GHRestMethod -Method GET -Uri $commentUrl
-            $allComments += $comments
-
-            if ($comments.Count -lt $perPage) {
-                break
-            }
-            $page++
-            $commentUrl = "$baseUrl/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
+    while ($true) {
+        try {
+            $comments = @(Invoke-GHRestMethod -Method GET -Uri $commentUrl)
         }
-        return $allComments
+        catch {
+            $_.Exception.Data['PartialResult'] = $allComments
+            throw
+        }
+        $allComments += $comments
+
+        if ($comments.Count -lt $perPage) {
+            break
+        }
+        $page++
+        $commentUrl = "$baseUrl/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
+    }
+    return $allComments
+}
+
+<#
+.SYNOPSIS
+Gets the HTTP status code from an API error record.
+
+.DESCRIPTION
+Returns the HTTP status code of the response attached to the exception in an
+ErrorRecord (as thrown by Invoke-GHRestMethod), or null if none is available
+(for example, network failures or non-HTTP errors).
+
+.PARAMETER ErrorRecord
+The ErrorRecord captured in a catch block ($_).
+
+.EXAMPLE
+try { Invoke-GHRestMethod -Method GET -Uri $url } catch { $statusCode = Get-ErrorStatusCode -ErrorRecord $_ }
+#>
+function Get-ErrorStatusCode {
+    param(
+        $ErrorRecord
+    )
+
+    try {
+        $statusCode = $ErrorRecord.Exception.Response.StatusCode
+        if ($null -ne $statusCode) {
+            return [int]$statusCode
+        }
     }
     catch {
-        Write-ActionDebug "Error getting PR comments: $($_.Exception.Message)"
-        return @()
+        Write-ActionDebug "Unable to read HTTP status code from error: $($_.Exception.Message)" | Out-Host
     }
+    return $null
+}
+
+<#
+.SYNOPSIS
+Retrieves a pull request review comment.
+
+.DESCRIPTION
+Fetches a pull request review comment from its API URL so the caller can verify which
+pull request it belongs to (via pull_request_url). Validates that the URL uses HTTPS and
+targets the expected API host before sending an authenticated request.
+Errors (including 404 for pending or deleted review comments) are propagated to the caller.
+
+.PARAMETER url
+The pull request review comment API URL (location.details.pull_request_review_comment_url).
+
+.PARAMETER expectedApiBaseUrl
+The expected GitHub API base URL (e.g., https://api.github.com).
+
+.EXAMPLE
+Get-PullRequestReviewComment -url 'https://api.github.com/repos/owner/repo/pulls/comments/123' -expectedApiBaseUrl 'https://api.github.com'
+Returns the review comment object, including pull_request_url.
+#>
+function Get-PullRequestReviewComment {
+    param(
+        [string]$url,
+        [string]$expectedApiBaseUrl = 'https://api.github.com'
+    )
+
+    $parsedUrl = [uri]$url
+    $parsedExpected = [uri]$expectedApiBaseUrl
+    if ($parsedUrl.Scheme -ne 'https') {
+        throw "Refusing to send credentials to non-HTTPS URL: $url"
+    }
+    if ($parsedUrl.Host -ne $parsedExpected.Host) {
+        throw "URL host '$($parsedUrl.Host)' does not match expected API host '$($parsedExpected.Host)'"
+    }
+
+    return Invoke-GHRestMethod -Method GET -Uri $parsedUrl.AbsoluteUri
+}
+
+<#
+.SYNOPSIS
+Retrieves the commit SHAs for a pull request.
+
+.DESCRIPTION
+Lists all commits on a pull request, following pagination. The list commits on a pull request
+endpoint returns at most 250 commits, so when the pull request reports more commits than were
+returned, the commits are re-read from the compare endpoint (base branch...head SHA), which
+paginates past that limit. The caller should compare the returned count against the pull
+request's commit count to detect an incomplete list. Errors are propagated to the caller.
+
+.PARAMETER pullRequest
+The pull request object (from GET /repos/{owner}/{repo}/pulls/{pull_number}).
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER pullNumber
+The pull request number.
+
+.PARAMETER apiBaseUrl
+The GitHub API base URL. Defaults to https://api.github.com.
+
+.EXAMPLE
+$shas = @(Get-PullRequestCommitSha -pullRequest $pr -owner 'owner' -repo 'repo' -pullNumber 42 -apiBaseUrl $ApiBaseUrl)
+#>
+function Get-PullRequestCommitSha {
+    param(
+        $pullRequest,
+        [string]$owner,
+        [string]$repo,
+        [int]$pullNumber,
+        [string]$apiBaseUrl = 'https://api.github.com'
+    )
+
+    $baseUrl = $apiBaseUrl.TrimEnd('/')
+    $commitShas = [System.Collections.Generic.List[string]]::new()
+    $url = "$baseUrl/repos/$owner/$repo/pulls/$pullNumber/commits?per_page=100"
+    while ($url) {
+        $response = Invoke-GHRestMethod -Method GET -Uri $url -ExtendedResult $true
+        foreach ($commit in @($response.result)) {
+            if ($commit.sha) { $commitShas.Add($commit.sha) }
+        }
+        $url = $response.nextLink
+    }
+
+    $expectedCount = [int]$pullRequest.commits
+    if ($commitShas.Count -lt $expectedCount -and $pullRequest.base.ref -and $pullRequest.head.sha) {
+        # Send-ActionCommand returns the workflow command string, so route it to the host to keep it out of the returned SHAs
+        Write-ActionDebug "PR#$pullNumber reports $expectedCount commits but only $($commitShas.Count) were listed. Reading commits from the compare endpoint." | Out-Host
+        $compareShas = [System.Collections.Generic.List[string]]::new()
+        $url = "$baseUrl/repos/$owner/$repo/compare/$([uri]::EscapeDataString($pullRequest.base.ref))...$($pullRequest.head.sha)?per_page=100"
+        while ($url) {
+            $response = Invoke-GHRestMethod -Method GET -Uri $url -ExtendedResult $true
+            foreach ($commit in @($response.result.commits)) {
+                if ($commit.sha) { $compareShas.Add($commit.sha) }
+            }
+            $url = $response.nextLink
+        }
+        if ($compareShas.Count -gt $commitShas.Count) {
+            $commitShas = $compareShas
+        }
+    }
+
+    return $commitShas.ToArray()
+}
+
+<#
+.SYNOPSIS
+Builds the markdown section listing errors that were tolerated because fail-closed is disabled.
+
+.DESCRIPTION
+Returns a markdown warning block listing each error message, or an empty string when there are none.
+
+.PARAMETER Warnings
+The list of error messages that were reported as warnings.
+
+.EXAMPLE
+Get-EvaluationWarningMarkdown -Warnings @('Error getting generic secret scanning alerts')
+#>
+function Get-EvaluationWarningMarkdown {
+    param(
+        [string[]]$Warnings
+    )
+
+    if (-not $Warnings -or $Warnings.Count -eq 0) {
+        return ''
+    }
+
+    $markdown = "`n> [!WARNING]`n> The secret scanning review could not be fully completed. ``fail-closed`` is disabled, so these errors did not fail the workflow:`n"
+    foreach ($warning in $Warnings) {
+        $markdown += "> - $(($warning -replace '\r?\n', ' ').Trim())`n"
+    }
+    return $markdown
 }
 
 <#
@@ -458,4 +629,4 @@ function Get-AlertDismissalState {
     }
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState

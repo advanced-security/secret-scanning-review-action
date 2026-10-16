@@ -96,6 +96,7 @@ By default, when any secrets are found the Action will also add a comment to the
 | `runtime` | No | Runtime to use for the action. Options: `powershell` or `python`. | `powershell` |
 | `skip-closed-alerts` | No | Only process open alerts. | `false` |
 | `disable-workflow-summary` | No | Disable the workflow summary markdown table output. | `false` |
+| `fail-closed` | No | Fail the workflow when a GitHub API error prevents a complete review (for example, the pull request, its commits, alerts, alert locations, or PR comments could not be read). When `false`, these errors are reported as warnings and listed in the workflow summary (and in the PR comment, when one is posted), and the review continues with the data that could be read. See [Handling API errors](#handling-api-errors). | `true` |
 | `python-http-proxy-url` | No | HTTP proxy URL for the python runtime. Example: `http://proxy.example.com:1234` | `""` |
 | `python-https-proxy-url` | No | HTTPS proxy URL for the python runtime. Example: `http://proxy.example.com:5678` | `""` |
 | `python-verify-ssl` | No | Enable/disable SSL verification for the python runtime. ⚠️ Disabling is NOT recommended for production. | `true` |
@@ -107,6 +108,18 @@ By default, when any secrets are found the Action will also add a comment to the
 | Output   | Description |
 |----------|-------------|
 | `alerts` | JSON array containing details about the alerts detected in the PR. See [Step Output of Alert Metadata](#step-output-of-alert-metadata) for the JSON schema and example usage. |
+
+### Handling API errors
+
+Both runtimes handle GitHub API errors the same way, controlled by `fail-closed`:
+
+- **`fail-closed: true` (default)**: any API error that prevents a complete review fails the workflow. Use this when the action is a required status check, so an incomplete review never reports success.
+- **`fail-closed: false`**: API errors are reported as `warning` annotations and listed in the workflow summary, and the step does not fail because of them. The PR comment is only posted when matching alerts are found, so warnings appear there only in that case. Alerts that could still be evaluated are reported as usual, and `fail-on-alert` still fails the workflow when a matching alert is found. If a required lookup fails (the pull request, its commits, or the secret scanning alerts), the review ends early with an "incomplete" workflow summary, an empty `alerts` output, and no PR comment.
+
+Regardless of `fail-closed`:
+
+- Configuration errors (missing token, or a workflow that is not running on a `pull_request` event) always fail the workflow.
+- Looking up [dismissal requests](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests) for the summary never fails the workflow.
 
 ### Token Requirements
 
@@ -121,7 +134,7 @@ The `token` input requires a GitHub Access Token with the following permissions:
 **Fine-grained Personal Access Tokens:**
 
 - **Read-Only**: [Secret Scanning Alerts](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-secret-scanning-alerts)
-- **Read-Only**: [Contents](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-contents) _(optional — required for showing dismissal request status in the summary table)_
+- **Read-Only**: [Contents](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-contents) _(recommended: required for showing dismissal request status in the summary table, and for reviewing pull requests with more than 250 commits, which are read from the [compare](https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#compare-two-commits) endpoint. Without it, those pull requests fail the review, or are reported as incomplete when `fail-closed: false`)_
 - **Write**: [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests)
   - If `disable-pr-comment: true`, only **Read-Only** [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests) is required (not required for public repositories)
 
@@ -324,6 +337,9 @@ sequenceDiagram
   - <https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request>
   - <https://docs.github.com/en/rest/pulls/reviews?apiVersion=2022-11-28#list-reviews-for-a-pull-request>
   - <https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request>
+
+- Commits
+  - <https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#compare-two-commits> (used when a pull request has more than 250 commits)
 
 - Secret Scanning
   - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository>
