@@ -247,7 +247,8 @@ Retrieves all comments for a pull request.
 Fetches all comments from a pull request using pagination.
 Errors are propagated to the caller so it can decide (via the fail-closed setting)
 whether a failed lookup should fail the review or be reported as a warning.
-
+Comments read before the error are attached to the exception as
+$_.Exception.Data['PartialResult'] so the caller can still review them.
 .PARAMETER owner
 The repository owner.
 
@@ -280,7 +281,13 @@ function Get-PullRequestComment {
     $commentUrl = "$baseUrl/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
 
     while ($true) {
-        $comments = @(Invoke-GHRestMethod -Method GET -Uri $commentUrl)
+        try {
+            $comments = @(Invoke-GHRestMethod -Method GET -Uri $commentUrl)
+        }
+        catch {
+            $_.Exception.Data['PartialResult'] = $allComments
+            throw
+        }
         $allComments += $comments
 
         if ($comments.Count -lt $perPage) {

@@ -299,6 +299,7 @@ $genericAlertsUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/secret-
 if ($SkipClosedAlerts) {
     $genericAlertsUrl += "&state=open"
 }
+$genericAlerts = [System.Collections.ArrayList]::new()
 try {
     $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsUrl -ExtendedResult $true
     $genericAlerts = [System.Collections.ArrayList]@($genericAlertsResponse.result)
@@ -308,23 +309,24 @@ try {
         $genericAlerts.AddRange($genericAlertsResponse.result)
     }
     Write-ActionInfo "Found $($genericAlerts.Count) generic secret scanning alert$($genericAlerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
-
-    # Merge alerts and deduplicate by alert number
-    $alertNumbers = @{}
-    foreach ($alert in $alerts) {
-        $alertNumbers[$alert.number] = $true
-    }
-    foreach ($genericAlert in $genericAlerts) {
-        if ($null -ne $genericAlert -and $null -ne $genericAlert.number -and -not $alertNumbers.ContainsKey($genericAlert.number)) {
-            [void]$alerts.Add($genericAlert)
-            $alertNumbers[$genericAlert.number] = $true
-        }
-    }
-    Write-ActionInfo "Found $($alerts.Count) total secret scanning alert$($alerts.Count -eq 1 ? '' : 's') after merging and deduplication"
 }
 catch {
-    Invoke-EvaluationError -Message "Error getting generic secret scanning alerts for '$OrganizationName/$RepositoryName'. Only default secret scanning alerts are reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+    Invoke-EvaluationError -Message "Error getting generic secret scanning alerts for '$OrganizationName/$RepositoryName'. Generic secret scanning alerts that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+    # FailClosed is disabled: still review any generic alerts that were read before the error
 }
+
+# Merge alerts and deduplicate by alert number
+$alertNumbers = @{}
+foreach ($alert in $alerts) {
+    $alertNumbers[$alert.number] = $true
+}
+foreach ($genericAlert in $genericAlerts) {
+    if ($null -ne $genericAlert -and $null -ne $genericAlert.number -and -not $alertNumbers.ContainsKey($genericAlert.number)) {
+        [void]$alerts.Add($genericAlert)
+        $alertNumbers[$genericAlert.number] = $true
+    }
+}
+Write-ActionInfo "Found $($alerts.Count) total secret scanning alert$($alerts.Count -eq 1 ? '' : 's') after merging and deduplication"
 
 # PR issue comments are only needed for 'pull_request_comment' locations; fetched once on first use
 $prComments = $null
@@ -394,8 +396,9 @@ foreach ($alert in $alerts) {
                         $prComments = @(Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl)
                     }
                     catch {
-                        $prComments = @()
-                        Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' PR#$PullRequestNumber. Secrets in PR comments are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+                        # FailClosed is disabled: still review any comments that were read before the error
+                        $prComments = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
+                        Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' PR#$PullRequestNumber. Secrets in PR comments that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
                     }
                 }
                 # Extract comment ID from the URL (last segment of the path)

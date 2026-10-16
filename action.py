@@ -237,7 +237,8 @@ def get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, htt
             raise EvaluationError(
                 f"Error getting '{repo_owner}/{repo_name}' {'generic ' if secret_type else ''}secret scanning alerts. "
                 f"{hint}(StatusCode:{status_code} Message:{err})",
-                status_code
+                status_code,
+                partial_result=all_alerts
             ) from err
     return all_alerts
 
@@ -401,7 +402,8 @@ def get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_
         raise EvaluationError(
             f"Error reading comments from '{repo_owner}/{repo_name}' PR#{pull_request_number}. "
             f"{hint}(StatusCode:{status_code} Message:{err})",
-            status_code
+            status_code,
+            partial_result=comments
         ) from err
 
 def _validate_api_url(url):
@@ -537,8 +539,9 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     try:
         generic_alerts = get_secret_scanning_alerts_for_repo(github_token, repo_owner, repo_name, http_proxy_url, https_proxy_url, verify_ssl, skip_closed_alerts, secret_type=GENERIC_SECRET_TYPES)
     except EvaluationError as err:
-        handle_evaluation_error(EvaluationError(f"{err} Only default secret scanning alerts are reviewed.", err.status_code), fail_closed, evaluation_warnings)
-        generic_alerts = []
+        handle_evaluation_error(EvaluationError(f"{err} Generic secret scanning alerts that could not be read are not reviewed.", err.status_code), fail_closed, evaluation_warnings)
+        # fail-closed is disabled: still review any generic alerts that were read before the error
+        generic_alerts = err.partial_result or []
     logging.debug(f"Found {len(generic_alerts)} generic alerts.")
     
     # Merge alerts and deduplicate by alert number
@@ -585,8 +588,9 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                     try:
                         pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
                     except EvaluationError as err:
-                        pr_comments = []
-                        handle_evaluation_error(EvaluationError(f"{err} Secrets in PR comments are not reviewed.", err.status_code), fail_closed, evaluation_warnings)
+                        handle_evaluation_error(EvaluationError(f"{err} Secrets in PR comments that could not be read are not reviewed.", err.status_code), fail_closed, evaluation_warnings)
+                        # fail-closed is disabled: still review any comments that were read before the error
+                        pr_comments = err.partial_result or []
                 comment_id = location['details']['pull_request_comment_url'].split('/')[-1]
                 for comment in pr_comments:
                     if str(comment['id']) == comment_id:
