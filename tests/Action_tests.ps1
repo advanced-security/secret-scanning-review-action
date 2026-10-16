@@ -228,6 +228,20 @@ Describe 'Get-PullRequestComment' {
         { Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 } | Should -Throw '*API Error*'
     }
 
+    It 'Attaches comments read before an error to the exception' {
+        Mock Invoke-GHRestMethod {
+            if ($Uri -like '*page=1') { return @(1..100 | ForEach-Object { @{ id = $_ } }) }
+            throw "API Error"
+        } -ModuleName ActionHelpers
+
+        $caught = $null
+        try { Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 } catch { $caught = $_ }
+
+        $caught | Should -Not -BeNullOrEmpty
+        $caught.Exception.Message | Should -BeLike '*API Error*'
+        @($caught.Exception.Data['PartialResult']).Count | Should -Be 100
+    }
+
     It 'Follows pagination when a page is full' {
         Mock Invoke-GHRestMethod {
             if ($Uri -like '*page=1') { return @(1..100 | ForEach-Object { @{ id = $_ } }) }

@@ -315,6 +315,36 @@ class TestGetLocationsForAlert:
         assert exc.value.partial_result == [{"type": "commit", "details": {"commit_sha": "a"}}]
 
 
+class TestPartialResultsOnPageError:
+    """Alert and comment fetchers attach the pages read before an error to the EvaluationError."""
+
+    @staticmethod
+    def _failing_second_page(first_page_json, first_page_headers):
+        page1 = _mock_response(first_page_json)
+        page1.headers = first_page_headers
+        page2 = _mock_response(None, status_code=502)
+        page2.raise_for_status.side_effect = requests.exceptions.HTTPError("502 Bad Gateway", response=page2)
+        return [page1, page2]
+
+    @patch("action.requests.get")
+    def test_alerts_error_on_later_page_keeps_earlier_pages(self, mock_get, github_com_api):
+        mock_get.side_effect = self._failing_second_page([{"number": 7}], {"Link": '<https://api.github.com/x?page=2>; rel="next"'})
+
+        with pytest.raises(action.EvaluationError) as exc:
+            action.get_secret_scanning_alerts_for_repo("token", "owner", "repo", None, None, True, False, secret_type="password")
+
+        assert exc.value.partial_result == [{"number": 7}]
+
+    @patch("action.requests.get")
+    def test_comments_error_on_later_page_keeps_earlier_pages(self, mock_get, github_com_api):
+        mock_get.side_effect = self._failing_second_page(_make_comments(100), {})
+
+        with pytest.raises(action.EvaluationError) as exc:
+            action.get_pull_request_comments("token", "owner", "repo", 1, None, None, True)
+
+        assert len(exc.value.partial_result) == 100
+
+
 class TestGetPullRequestReviewComment:
     """Tests for get_pull_request_review_comment error handling."""
 
@@ -499,6 +529,40 @@ class TestMainFailClosed:
         mock_locations.side_effect = action.EvaluationError("Error getting locations page 2", 500, partial_result=[])
 
         assert self._run(True) == 1
+
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_partial_generic_alerts_are_reviewed_when_not_fail_closed(self, mock_pr, _shas, mock_alerts, mock_locations, _dismissal, env):
+        """Generic alerts read before an error are still reviewed, so fail-on-alert still applies."""
+        summary, output = env
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[], action.EvaluationError("Error getting generic alerts page 2", 500, partial_result=[_alert()])]
+        mock_locations.return_value = [{"type": "commit", "details": {"commit_sha": "abc", "path": "a.txt", "start_line": 1, "start_column": 1}}]
+
+        assert self._run(False, fail_on_alert=True) == 1
+        assert "alerts=[]" not in output.read_text()
+        assert "Error getting generic alerts page 2" in summary.read_text(encoding="utf-8")
+
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_pull_request_comments")
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_partial_pr_comments_are_reviewed_when_not_fail_closed(self, mock_pr, _shas, mock_alerts, mock_locations, mock_comments, _dismissal, env):
+        """PR comments read before an error are still reviewed, so fail-on-alert still applies."""
+        summary, output = env
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [{"type": "pull_request_comment", "details": {"pull_request_comment_url": "https://api.github.com/repos/owner/repo/issues/comments/5"}}]
+        mock_comments.side_effect = action.EvaluationError("Error reading comments page 2", 500, partial_result=[{"id": 5}])
+
+        assert self._run(False, fail_on_alert=True) == 1
+        assert "alerts=[]" not in output.read_text()
+        assert "Error reading comments page 2" in summary.read_text(encoding="utf-8")
 
     @patch("action.get_dismissal_request_for_alert", return_value=None)
     @patch("action.get_locations_for_alert")
