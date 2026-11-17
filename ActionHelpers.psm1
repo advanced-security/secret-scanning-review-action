@@ -686,6 +686,49 @@ function Get-PagedResult {
 
 <#
 .SYNOPSIS
+Gets the API URL of a secret scanning alert's locations.
+
+.DESCRIPTION
+Returns the alert's locations_url. When it is missing, the URL is built from the alert number
+(<API base URL>/repos/{owner}/{repo}/secret-scanning/alerts/{number}/locations), as the Python runtime does,
+so the alert is still reviewed. Returns $null when the alert has neither.
+
+.PARAMETER alert
+The secret scanning alert.
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER apiBaseUrl
+The GitHub API base URL (e.g., https://api.github.com or https://<hostname>/api/v3).
+Defaults to https://api.github.com.
+
+.EXAMPLE
+Get-AlertLocationsUrl -alert @{ number = 42 } -owner 'owner' -repo 'repo' -apiBaseUrl 'https://api.github.com'
+Returns: 'https://api.github.com/repos/owner/repo/secret-scanning/alerts/42/locations'
+#>
+function Get-AlertLocationsUrl {
+    param(
+        $alert,
+        [string]$owner,
+        [string]$repo,
+        [string]$apiBaseUrl = 'https://api.github.com'
+    )
+
+    if (-not [String]::IsNullOrWhiteSpace($alert.locations_url)) {
+        return $alert.locations_url
+    }
+    if ($null -ne $alert.number) {
+        return "$($apiBaseUrl.TrimEnd('/'))/repos/$owner/$repo/secret-scanning/alerts/$($alert.number)/locations"
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
 Retrieves the commit SHAs for a pull request.
 
 .DESCRIPTION
@@ -981,4 +1024,4 @@ function Get-PullRequestNumberFromRef {
     return $null
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PagedResult, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PagedResult, Get-AlertLocationsUrl, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef

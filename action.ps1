@@ -357,9 +357,12 @@ $listPrComments = {
 $alertCount = 0
 $alertsInitiatedFromPr = @()
 foreach ($alert in $alerts) {
-    # Skip alerts that don't have required properties - we need location data to determine if it matches the PR
-    if ($null -eq $alert -or [String]::IsNullOrWhiteSpace($alert.locations_url)) {
-        Write-ActionDebug "Skipping alert without location data (number: $($alert.number), alert_type: $($alert.secret_type_display_name), locations_url: '$($alert.locations_url)')"
+    # Use the alert's locations_url, or the URL built from its number when it is missing. An alert with neither cannot
+    # be reviewed, so it is reported as an evaluation error rather than skipped (a skipped alert would make an
+    # incomplete review look complete).
+    $alertLocationsUrl = Get-AlertLocationsUrl -alert $alert -owner $OrganizationName -repo $RepositoryName -apiBaseUrl $ApiBaseUrl
+    if (-not $alertLocationsUrl) {
+        Invoke-EvaluationError -Message "A '$OrganizationName/$RepositoryName' secret scanning alert without a number or locations_url could not be reviewed."
         continue
     }
 
@@ -369,7 +372,7 @@ foreach ($alert in $alerts) {
     - returns: 1 "location" object per file where secret detected
     - note: details.commit_sha - SHA of the commit where the secret was detected
     #>
-    $repoAlertLocationUrl = [uri]"$($alert.locations_url)?per_page=$perPage"
+    $repoAlertLocationUrl = [uri]"$($alertLocationsUrl)?per_page=$perPage"
     $locations = @()
     try {
         $locations = @(Get-PagedResult -url $repoAlertLocationUrl.AbsoluteUri)
@@ -378,7 +381,7 @@ foreach ($alert in $alerts) {
     catch {
         # FailClosed is disabled: still review any location pages that were read before the error
         $locations = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
-        Write-ActionDebug "Alert number: $($alert.number), locations_url: '$($alert.locations_url)'"
+        Write-ActionDebug "Alert number: $($alert.number), locations_url: '$alertLocationsUrl'"
         Invoke-EvaluationError -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert #$($alert.number) locations.  Ensure the 'token' input has proper permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
     }
 

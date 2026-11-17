@@ -620,6 +620,25 @@ Describe 'Get-PagedResult' {
     }
 }
 
+Describe 'Get-AlertLocationsUrl' {
+    It 'Returns the alert locations_url' {
+        $alert = @{ number = 42; locations_url = 'https://api.tenant.ghe.com/repos/owner/repo/secret-scanning/alerts/42/locations' }
+        Get-AlertLocationsUrl -alert $alert -owner 'owner' -repo 'repo' -apiBaseUrl 'https://api.tenant.ghe.com' | Should -Be 'https://api.tenant.ghe.com/repos/owner/repo/secret-scanning/alerts/42/locations'
+    }
+
+    It 'Builds the URL from the alert number when locations_url is <case>' -TestCases @(
+        @{ case = 'missing'; alert = @{ number = 42 } }
+        @{ case = 'blank'; alert = @{ number = 42; locations_url = ' ' } }
+    ) {
+        param($alert)
+        Get-AlertLocationsUrl -alert $alert -owner 'owner' -repo 'repo' -apiBaseUrl 'https://ghes.example.com/api/v3/' | Should -Be 'https://ghes.example.com/api/v3/repos/owner/repo/secret-scanning/alerts/42/locations'
+    }
+
+    It 'Returns null when the alert has neither a number nor a locations_url' {
+        Get-AlertLocationsUrl -alert @{ secret_type = 'password' } -owner 'owner' -repo 'repo' | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Get-PullRequestCommitSha' {
     It 'Follows nextLink pagination on the pull request commits endpoint' {
         Mock Invoke-GHRestMethod {
