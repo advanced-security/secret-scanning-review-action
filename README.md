@@ -316,6 +316,7 @@ sequenceDiagram
 - Implicit
   - GITHUB_REPOSITORY - The owner / repository name.
   - GITHUB_REF - The pull request ref. Supports both the `pull_request` event (`refs/pull/:prNumber/merge`) and the `merge_group` event used by [merge queues](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) (`refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha`).
+  - GITHUB_SERVER_URL - The URL of the GitHub instance the workflow runs on. The `powershell` runtime links review comment locations in the summary to the alert location's `html_url`, and uses this URL to build the link when `html_url` is missing (for example, on older GitHub Enterprise Server versions). Defaults to `https://github.com` for local runs.
 
 - Outputs
   - GITHUB_STEP_SUMMARY - Markdown for each job so that it will be displayed on the summary page of a workflow run (unique for each step in a job)

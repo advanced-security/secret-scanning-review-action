@@ -150,6 +150,9 @@ Generates a markdown hyperlink for an alert location.
 .DESCRIPTION
 Creates a markdown link to the specific location where a secret was detected.
 Handles various location types including commits, PR titles, comments, and reviews.
+Pull request review comments link to the location's html_url, without an API call. When html_url is missing
+(for example, on older GitHub Enterprise Server versions), the link is built on the GitHub instance the workflow
+runs on (GITHUB_SERVER_URL, defaulting to https://github.com).
 
 .PARAMETER location
 The location object containing type and details of where the secret was found.
@@ -159,6 +162,10 @@ The HTML URL of the pull request.
 
 .PARAMETER pullRequestNumber
 The pull request number.
+
+.PARAMETER expectedApiBaseUrl
+The expected GitHub API base URL (e.g., https://api.github.com), used to validate the location API URLs
+before sending an authenticated request for their html_url.
 
 .EXAMPLE
 Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42
@@ -212,23 +219,16 @@ function Get-AlertLocationWithLink {
             return $locationType
         }
         'pull_request_review_comment' {
-            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_review_comment_url -expectedApiBaseUrl $expectedApiBaseUrl
-            if ($htmlUrl) {
-                # API call succeeded - use the html_url from the response
-                return "[$locationType]($htmlUrl)"
+            # Prefer the location's html_url: it needs no API call and is also provided for pending or deleted review comments
+            if ($location.details.html_url) {
+                return "[$locationType]($($location.details.html_url))"
             }
 
-            # If we reach here, $htmlUrl is null (API call failed, likely 404 for pending/deleted review comment)
-            # Fallback: manually construct the GitHub URL from the comment ID
-            if ($location.details.pull_request_review_comment_url) {
-                $commentId = Get-IdFromUrl -url $location.details.pull_request_review_comment_url
-                $uri = [uri]$location.details.pull_request_review_comment_url
-                $pathSegments = $uri.AbsolutePath -split '/'
-                # Extract repo path: /repos/owner/repo/pulls/comments/12345 -> owner/repo
-                $owner = $pathSegments[2]
-                $repo = $pathSegments[3]
-                $constructedUrl = "https://github.com/$owner/$repo/pull/$pullRequestNumber#discussion_r$commentId"
-                return "[$locationType]($constructedUrl)"
+            # Without html_url, build the link on the GitHub instance the workflow runs on from the review comment API URL:
+            # <API base URL>/repos/{owner}/{repo}/pulls/comments/{id} -> <server URL>/{owner}/{repo}/pull/{pull number}#discussion_r{id}
+            if ($location.details.pull_request_review_comment_url -match '/repos/(?<owner>[^/]+)/(?<repo>[^/]+)/pulls/comments/(?<id>[0-9]+)/?$') {
+                $serverUrl = if ([String]::IsNullOrWhiteSpace($env:GITHUB_SERVER_URL)) { 'https://github.com' } else { $env:GITHUB_SERVER_URL.TrimEnd('/') }
+                return "[$locationType]($serverUrl/$($matches.owner)/$($matches.repo)/pull/$pullRequestNumber#discussion_r$($matches.id))"
             }
 
             return $locationType

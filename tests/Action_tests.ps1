@@ -171,6 +171,12 @@ Describe 'Get-AlertLocationWithLink' {
     BeforeEach {
         # Default mock - return null to test fallback paths
         Mock Get-PullRequestHtmlUrl { return $null } -ModuleName ActionHelpers
+        $script:originalServerUrl = $env:GITHUB_SERVER_URL
+        $env:GITHUB_SERVER_URL = $null
+    }
+
+    AfterEach {
+        $env:GITHUB_SERVER_URL = $script:originalServerUrl
     }
 
     It 'Throws when location has no type field' {
@@ -209,15 +215,41 @@ Describe 'Get-AlertLocationWithLink' {
         $result | Should -Be 'Pull request title'
     }
 
-    It 'Returns fallback URL for pull_request_review_comment when API fails' {
-        Mock Get-PullRequestHtmlUrl { return $null } -ModuleName ActionHelpers
+    It 'Uses the location html_url for pull_request_review_comment without an API call' {
+        $location = @{
+            type = 'pull_request_review_comment'
+            details = @{
+                pull_request_review_comment_url = 'https://api.tenant.ghe.com/repos/owner/repo/pulls/comments/12345'
+                html_url                        = 'https://tenant.ghe.com/owner/repo/pull/42#discussion_r12345'
+            }
+        }
+        $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://tenant.ghe.com/owner/repo/pull/42' -pullRequestNumber 42
+        $result | Should -Be '[Pull request review comment](https://tenant.ghe.com/owner/repo/pull/42#discussion_r12345)'
+        Should -Invoke Get-PullRequestHtmlUrl -Times 0 -Exactly -ModuleName ActionHelpers
+    }
 
+    It 'Builds the pull_request_review_comment link on GITHUB_SERVER_URL when html_url is missing (<case>)' -TestCases @(
+        @{ case = 'GHE.com'; serverUrl = 'https://tenant.ghe.com'; apiUrl = 'https://api.tenant.ghe.com/repos/owner/repo/pulls/comments/12345'; expected = 'https://tenant.ghe.com/owner/repo/pull/42#discussion_r12345' }
+        @{ case = 'GHES'; serverUrl = 'https://ghes.example.com/'; apiUrl = 'https://ghes.example.com/api/v3/repos/owner/repo/pulls/comments/12345'; expected = 'https://ghes.example.com/owner/repo/pull/42#discussion_r12345' }
+    ) {
+        param($serverUrl, $apiUrl, $expected)
+        $env:GITHUB_SERVER_URL = $serverUrl
+        $location = @{
+            type = 'pull_request_review_comment'
+            details = @{ pull_request_review_comment_url = $apiUrl }
+        }
+        $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://example.com/owner/repo/pull/42' -pullRequestNumber 42
+        $result | Should -Be "[Pull request review comment]($expected)"
+    }
+
+    It 'Builds the pull_request_review_comment link on https://github.com when html_url and GITHUB_SERVER_URL are missing' {
         $location = @{
             type = 'pull_request_review_comment'
             details = @{ pull_request_review_comment_url = 'https://api.github.com/repos/owner/repo/pulls/comments/12345' }
         }
         $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42
         $result | Should -Be '[Pull request review comment](https://github.com/owner/repo/pull/42#discussion_r12345)'
+        Should -Invoke Get-PullRequestHtmlUrl -Times 0 -Exactly -ModuleName ActionHelpers
     }
 }
 
