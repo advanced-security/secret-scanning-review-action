@@ -282,7 +282,8 @@ function Get-PullRequestComment {
 
     while ($true) {
         try {
-            $comments = @(Invoke-GHRestMethod -Method GET -Uri $commentUrl)
+            # Invoke-GHRestMethod returns $null for an empty page, so skip $null entries
+            $comments = @(Invoke-GHRestMethod -Method GET -Uri $commentUrl | Where-Object { $null -ne $_ })
         }
         catch {
             $_.Exception.Data['PartialResult'] = $allComments
@@ -641,6 +642,48 @@ function Test-PullRequestCommentInPullRequest {
 
 <#
 .SYNOPSIS
+Retrieves all items from a paginated GitHub API list endpoint.
+
+.DESCRIPTION
+Requests the list URL and follows the nextLink of each page. Invoke-GHRestMethod returns $null for an empty
+page and a single object (not an array) for a page with one item, so each page is unrolled and $null entries
+are skipped: only the listed items are returned.
+Errors are propagated to the caller. Items read before the error are attached to the exception as
+$_.Exception.Data['PartialResult'] so the caller can still review them.
+
+.PARAMETER url
+The list URL, including any query parameters.
+
+.EXAMPLE
+$alerts = @(Get-PagedResult -url 'https://api.github.com/repos/owner/repo/secret-scanning/alerts?per_page=100')
+Returns all secret scanning alerts for the repository.
+#>
+function Get-PagedResult {
+    param(
+        [string]$url
+    )
+
+    $items = [System.Collections.Generic.List[object]]::new()
+    try {
+        while ($url) {
+            $response = Invoke-GHRestMethod -Method GET -Uri $url -ExtendedResult $true
+            foreach ($item in @($response.result)) {
+                if ($null -ne $item) {
+                    $items.Add($item)
+                }
+            }
+            $url = $response.nextLink
+        }
+    }
+    catch {
+        $_.Exception.Data['PartialResult'] = $items.ToArray()
+        throw
+    }
+    return $items.ToArray()
+}
+
+<#
+.SYNOPSIS
 Retrieves the commit SHAs for a pull request.
 
 .DESCRIPTION
@@ -936,4 +979,4 @@ function Get-PullRequestNumberFromRef {
     return $null
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PagedResult, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef

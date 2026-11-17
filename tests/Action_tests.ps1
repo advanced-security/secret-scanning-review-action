@@ -255,6 +255,12 @@ Describe 'Get-AlertLocationWithLink' {
 }
 
 Describe 'Get-PullRequestComment' {
+    It 'Returns no comments for a pull request without comments' {
+        # Invoke-GHRestMethod returns $null for an empty page
+        Mock Invoke-GHRestMethod { return $null } -ModuleName ActionHelpers
+
+        @(Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42).Count | Should -Be 0
+    }
     It 'Propagates API errors to the caller' {
         Mock Invoke-GHRestMethod { throw "API Error" } -ModuleName ActionHelpers
 
@@ -577,6 +583,40 @@ Describe 'Test-PullRequestCommentInPullRequest' {
 
         Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { @(@{ id = 98 }, @{ id = 99 }) } | Should -BeTrue
         Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { @(@{ id = 98 }) } | Should -BeFalse
+    }
+}
+
+Describe 'Get-PagedResult' {
+    It 'Returns no items for an empty list' {
+        # Invoke-GHRestMethod returns a $null result for an empty page
+        Mock Invoke-GHRestMethod { return @{ result = $null; nextLink = $null } } -ModuleName ActionHelpers
+
+        @(Get-PagedResult -url 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100').Count | Should -Be 0
+    }
+
+    It 'Follows nextLink, including a page with a single item' {
+        # Invoke-GHRestMethod returns a single object (not an array) for a page with one item
+        Mock Invoke-GHRestMethod {
+            if ($Uri -like '*page=2') { return @{ result = [pscustomobject]@{ number = 3 }; nextLink = $null } }
+            return @{ result = @([pscustomobject]@{ number = 1 }, [pscustomobject]@{ number = 2 }); nextLink = 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100&page=2' }
+        } -ModuleName ActionHelpers
+
+        $result = @(Get-PagedResult -url 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100')
+        $result.number | Should -Be @(1, 2, 3)
+        Should -Invoke Invoke-GHRestMethod -Times 2 -Exactly -ModuleName ActionHelpers
+    }
+
+    It 'Attaches items read before an error to the exception' {
+        Mock Invoke-GHRestMethod {
+            if ($Uri -like '*page=2') { throw 'Bad Gateway' }
+            return @{ result = [pscustomobject]@{ number = 1 }; nextLink = 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100&page=2' }
+        } -ModuleName ActionHelpers
+
+        $caught = $null
+        try { Get-PagedResult -url 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100' } catch { $caught = $_ }
+
+        $caught.Exception.Message | Should -BeLike '*Bad Gateway*'
+        @($caught.Exception.Data['PartialResult']).number | Should -Be @(1)
     }
 }
 

@@ -282,13 +282,7 @@ if ($SkipClosedAlerts) {
     $repoAlertsUrl += "&state=open"
 }
 try {
-    $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl -ExtendedResult $true
-    $alerts = [System.Collections.ArrayList]@($alertsResponse.result)
-    # Get the next page of secret scanning alerts if there is one
-    while ($alertsResponse.nextLink) {
-        $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $alertsResponse.nextLink -ExtendedResult $true
-        $alerts.AddRange($alertsResponse.result)
-    }
+    $alerts = [System.Collections.ArrayList]@(Get-PagedResult -url $repoAlertsUrl)
     Write-ActionInfo "Found $($alerts.Count) default secret scanning alert$($alerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
 }
 catch {
@@ -318,20 +312,15 @@ $genericAlertsUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/secret-
 if ($SkipClosedAlerts) {
     $genericAlertsUrl += "&state=open"
 }
-$genericAlerts = [System.Collections.ArrayList]::new()
+$genericAlerts = @()
 try {
-    $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsUrl -ExtendedResult $true
-    $genericAlerts = [System.Collections.ArrayList]@($genericAlertsResponse.result)
-    # Get the next page of generic secret scanning alerts if there is one
-    while ($genericAlertsResponse.nextLink) {
-        $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsResponse.nextLink -ExtendedResult $true
-        $genericAlerts.AddRange($genericAlertsResponse.result)
-    }
+    $genericAlerts = @(Get-PagedResult -url $genericAlertsUrl)
     Write-ActionInfo "Found $($genericAlerts.Count) generic secret scanning alert$($genericAlerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
 }
 catch {
-    Invoke-EvaluationError -Message "Error getting generic secret scanning alerts for '$OrganizationName/$RepositoryName'. Generic secret scanning alerts that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
     # FailClosed is disabled: still review any generic alerts that were read before the error
+    $genericAlerts = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
+    Invoke-EvaluationError -Message "Error getting generic secret scanning alerts for '$OrganizationName/$RepositoryName'. Generic secret scanning alerts that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
 # Merge alerts and deduplicate by alert number
@@ -382,19 +371,14 @@ foreach ($alert in $alerts) {
     $repoAlertLocationUrl = [uri]"$($alert.locations_url)?per_page=$perPage"
     $locations = @()
     try {
-        $locationsResult = Invoke-GHRestMethod -Method GET -Uri $repoAlertLocationUrl.AbsoluteUri -ExtendedResult $true
-        $locations = $locationsResult.result
-        # Get the next page of secret scanning alert locations if there is one
-        while ($locationsResult.nextLink) {
-            $locationsResult = Invoke-GHRestMethod -Method GET -Uri $locationsResult.nextLink -ExtendedResult $true
-            $locations += $locationsResult.result
-        }
+        $locations = @(Get-PagedResult -url $repoAlertLocationUrl.AbsoluteUri)
         Write-ActionDebug "Found $($locations.Count) secret scanning alert locations for alert #$($alert.number)"
     }
     catch {
+        # FailClosed is disabled: still review any location pages that were read before the error
+        $locations = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
         Write-ActionDebug "Alert number: $($alert.number), locations_url: '$($alert.locations_url)'"
         Invoke-EvaluationError -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert #$($alert.number) locations.  Ensure the 'token' input has proper permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
-        # FailClosed is disabled: still review any location pages that were read before the error
     }
 
     $locationMatches = @()
