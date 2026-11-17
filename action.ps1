@@ -46,7 +46,7 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         If a required lookup fails (pull request, commits, or alerts), the review is reported as incomplete, no PR
         comment is posted, and the action exits with code 0.
         Dismissal request lookups are informational only and never fail the workflow.
-        Configuration errors (missing token, non pull_request event) always fail the workflow.
+        Configuration errors (missing token, event other than pull_request or merge_group) always fail the workflow.
         Default is true.
 
 .PARAMETER DisablePRComment

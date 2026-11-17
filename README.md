@@ -118,7 +118,7 @@ Both runtimes handle GitHub API errors the same way, controlled by `fail-closed`
 
 Regardless of `fail-closed`:
 
-- Configuration errors (missing token, or a workflow that is not running on a `pull_request` event) always fail the workflow.
+- Configuration errors (missing token, or a workflow that is not running on a `pull_request` or `merge_group` event) always fail the workflow.
 - Looking up [dismissal requests](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests) for the summary never fails the workflow.
 
 ### Token Requirements
