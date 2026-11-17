@@ -45,6 +45,10 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         posted because matching alerts were found) and the review continues with the data that could be retrieved.
         If a required lookup fails (pull request, commits, or alerts), the review is reported as incomplete, no PR
         comment is posted, and the action exits with code 0.
+        Secrets in review comments are matched by the pull request number in the alert location's html_url, without
+        an API call. Only when html_url is missing or not in the expected format is the review comment looked up; if
+        it is not accessible (404, for example a pending or deleted review comment), it is counted as a match when
+        true, and skipped with a warning when false.
         Dismissal request lookups are informational only and never fail the workflow.
         Configuration errors (missing token, event other than pull_request or merge_group) always fail the workflow.
         Default is true.
@@ -438,34 +442,32 @@ foreach ($alert in $alerts) {
                 }
             }
             'pull_request_review_comment' {
-                # Look up the review comment to confirm it belongs to this PR (via pull_request_url).
-                # Note: Pending review comments are not accessible via the API (return 404) but are still
-                # detected by secret scanning, and the comment may also have been deleted after detection.
-                # A 404 is counted as a match when FailClosed is enabled, and skipped with a warning otherwise.
+                # The PR number is read from the location's html_url without an API call, so pending review
+                # comments (which the API cannot return, 404) and comments deleted after detection are matched
+                # only to the PR they were posted on. Only when html_url is missing or not in the expected format
+                # is the review comment looked up to compare its pull_request_url. Then a 404 is counted as a
+                # match when FailClosed is enabled, and skipped with a warning otherwise.
                 $reviewCommentUrl = $location.details.pull_request_review_comment_url
-                if ($reviewCommentUrl) {
-                    try {
-                        $reviewComment = Get-PullRequestReviewComment -url $reviewCommentUrl -expectedApiBaseUrl $ApiBaseUrl
-                        if ($reviewComment.pull_request_url -eq $pr.url) {
-                            Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review comment."
+                try {
+                    if (Test-ReviewCommentInPullRequest -location $location -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -pullRequestApiUrl $pr.url -expectedApiBaseUrl $ApiBaseUrl) {
+                        Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR review comment."
+                        $matchFound = $true
+                    }
+                }
+                catch {
+                    if ((Get-ErrorStatusCode -ErrorRecord $_) -eq 404) {
+                        if ($FailClosed) {
+                            Write-ActionInfo "Alert $($alert.number) review comment '$reviewCommentUrl' is not accessible (pending or deleted). Counting it as a match because fail-closed is enabled."
                             $matchFound = $true
                         }
-                    }
-                    catch {
-                        if ((Get-ErrorStatusCode -ErrorRecord $_) -eq 404) {
-                            if ($FailClosed) {
-                                Write-ActionInfo "Alert $($alert.number) review comment '$reviewCommentUrl' is not accessible (pending or deleted). Counting it as a match because fail-closed is enabled."
-                                $matchFound = $true
-                            }
-                            else {
-                                $warningMessage = "Alert $($alert.number) review comment '$reviewCommentUrl' is not accessible (pending or deleted) and could not be verified for PR#$PullRequestNumber."
-                                Write-ActionWarning -Message "$warningMessage (fail-closed is disabled, continuing)"
-                                $evaluationWarnings.Add($warningMessage)
-                            }
-                        }
                         else {
-                            Invoke-EvaluationError -Message "Error reading review comment '$reviewCommentUrl' for alert $($alert.number). (StatusCode:$(Get-ErrorStatusCode -ErrorRecord $_) Message:$($_.Exception.Message)"
+                            $warningMessage = "Alert $($alert.number) review comment '$reviewCommentUrl' is not accessible (pending or deleted) and could not be verified for PR#$PullRequestNumber."
+                            Write-ActionWarning -Message "$warningMessage (fail-closed is disabled, continuing)"
+                            $evaluationWarnings.Add($warningMessage)
                         }
+                    }
+                    else {
+                        Invoke-EvaluationError -Message "Error reading review comment '$reviewCommentUrl' for alert $($alert.number). (StatusCode:$(Get-ErrorStatusCode -ErrorRecord $_) Message:$($_.Exception.Message)"
                     }
                 }
             }

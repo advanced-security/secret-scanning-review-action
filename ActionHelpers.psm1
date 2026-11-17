@@ -371,6 +371,105 @@ function Get-PullRequestReviewComment {
 
 <#
 .SYNOPSIS
+Extracts the pull request number from a review comment html_url.
+
+.DESCRIPTION
+Returns the pull request number from a review comment html_url in the format
+https://<host>/<owner>/<repo>/pull/<number>#discussion_r<id>, as provided in the html_url of a
+pull_request_review_comment secret scanning alert location. The owner and repository must match
+the given repository (case-insensitive).
+Returns $null when the URL is missing, is not in that format, or belongs to another repository.
+
+.PARAMETER htmlUrl
+The review comment html_url (location.details.html_url).
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.EXAMPLE
+Get-PullRequestNumberFromReviewCommentHtmlUrl -htmlUrl 'https://github.com/owner/repo/pull/42#discussion_r12345' -owner 'owner' -repo 'repo'
+Returns: 42
+#>
+function Get-PullRequestNumberFromReviewCommentHtmlUrl {
+    param(
+        [string]$htmlUrl,
+        [string]$owner,
+        [string]$repo
+    )
+
+    if ($htmlUrl -cmatch '^https?://[^/?#\s]+/(?<owner>[^/?#\s]+)/(?<repo>[^/?#\s]+)/pull/(?<number>[0-9]+)#discussion_r[0-9]+\z' -and
+        $matches.owner -ieq $owner -and $matches.repo -ieq $repo) {
+        return $matches.number -as [long]
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+Tests whether a pull request review comment alert location belongs to a pull request.
+
+.DESCRIPTION
+Compares the pull request number in the location's html_url (see
+Get-PullRequestNumberFromReviewCommentHtmlUrl) with the given pull request number, without an API
+call. This also works for pending or deleted review comments, which the API cannot return (404).
+Only when html_url is missing or not in that format is the review comment read from
+pull_request_review_comment_url (see Get-PullRequestReviewComment) and its pull_request_url
+compared with the pull request API URL. Errors from that lookup (including 404 for pending or
+deleted review comments) are propagated to the caller.
+Returns $false when the location has neither URL.
+
+.PARAMETER location
+The pull_request_review_comment secret scanning alert location.
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER pullNumber
+The pull request number.
+
+.PARAMETER pullRequestApiUrl
+The pull request API URL (e.g., https://api.github.com/repos/owner/repo/pulls/42).
+
+.PARAMETER expectedApiBaseUrl
+The expected GitHub API base URL (e.g., https://api.github.com), used to validate
+pull_request_review_comment_url before sending an authenticated request.
+
+.EXAMPLE
+Test-ReviewCommentInPullRequest -location $location -owner 'owner' -repo 'repo' -pullNumber 42 -pullRequestApiUrl 'https://api.github.com/repos/owner/repo/pulls/42' -expectedApiBaseUrl 'https://api.github.com'
+Returns $true when the review comment is on pull request #42, otherwise $false.
+#>
+function Test-ReviewCommentInPullRequest {
+    param(
+        $location,
+        [string]$owner,
+        [string]$repo,
+        [int]$pullNumber,
+        [string]$pullRequestApiUrl,
+        [string]$expectedApiBaseUrl = 'https://api.github.com'
+    )
+
+    $htmlUrlPullNumber = Get-PullRequestNumberFromReviewCommentHtmlUrl -htmlUrl $location.details.html_url -owner $owner -repo $repo
+    if ($null -ne $htmlUrlPullNumber) {
+        return $htmlUrlPullNumber -eq $pullNumber
+    }
+
+    $reviewCommentUrl = $location.details.pull_request_review_comment_url
+    if (-not $reviewCommentUrl) {
+        return $false
+    }
+
+    $reviewComment = Get-PullRequestReviewComment -url $reviewCommentUrl -expectedApiBaseUrl $expectedApiBaseUrl
+    return $reviewComment.pull_request_url -eq $pullRequestApiUrl
+}
+
+<#
+.SYNOPSIS
 Retrieves the commit SHAs for a pull request.
 
 .DESCRIPTION
@@ -666,4 +765,4 @@ function Get-PullRequestNumberFromRef {
     return $null
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef

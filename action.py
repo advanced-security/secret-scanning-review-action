@@ -441,6 +441,24 @@ def get_pull_request_review_comment(github_token, pr_review_comment_url, http_pr
             status_code
         ) from err
 
+def get_pull_request_number_from_review_comment_html_url(html_url, repo_owner, repo_name):
+    """Extract the pull request number from a review comment html_url.
+
+    Expects https://<host>/<owner>/<repo>/pull/<number>#discussion_r<id>, as provided in the html_url
+    of a pull_request_review_comment secret scanning alert location. The owner and repository must
+    match the given repository (case-insensitive).
+    Returns None when html_url is missing, is not in that format, or belongs to another repository.
+    """
+    if not isinstance(html_url, str):
+        return None
+    match = re.fullmatch(r'https?://[^/?#\s]+/([^/?#\s]+)/([^/?#\s]+)/pull/([0-9]+)#discussion_r[0-9]+', html_url)
+    if not match:
+        return None
+    owner, repo, number = match.groups()
+    if owner.lower() != repo_owner.lower() or repo.lower() != repo_name.lower():
+        return None
+    return int(number)
+
 def get_pull_request_number_from_ref(github_ref):
     """Extract the pull request number from the GITHUB_REF environment variable.
 
@@ -621,9 +639,18 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                     alerts_in_pr.append(alert)
                     break
             elif location['type'] == 'pull_request_review_comment':
-                # Look up the review comment to confirm it belongs to this PR (via pull_request_url).
-                # Pending review comments are not accessible via the API (404) but are still detected by
-                # secret scanning, and the comment may also have been deleted after detection.
+                # The PR number is read from the location's html_url without an API call, so pending review
+                # comments (which the API cannot return, 404) and comments deleted after detection are matched
+                # only to the PR they were posted on.
+                html_url_pull_request_number = get_pull_request_number_from_review_comment_html_url(location['details'].get('html_url'), repo_owner, repo_name)
+                if html_url_pull_request_number is not None:
+                    if html_url_pull_request_number == int(pull_request_number):
+                        logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
+                        alerts_in_pr.append(alert)
+                        break
+                    continue
+                # html_url is missing or not in the expected format: look up the review comment to confirm it
+                # belongs to this PR (via pull_request_url).
                 # A 404 is counted as a match when fail-closed is enabled, and skipped with a warning otherwise.
                 pr_review_comment_url = location['details'].get('pull_request_review_comment_url')
                 if not pr_review_comment_url:

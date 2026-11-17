@@ -121,6 +121,8 @@ Regardless of `fail-closed`:
 - Configuration errors (missing token, or a workflow that is not running on a `pull_request` or `merge_group` event) always fail the workflow.
 - Looking up [dismissal requests](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests) for the summary never fails the workflow.
 
+Secrets in pull request review comments are matched using the pull request number in the alert location's `html_url`, without an API call, so a pending or deleted review comment is only reported on the pull request it was posted on. When `html_url` is missing or not in the expected format, the review comment is read from the API instead. If it is not accessible (404, for example a pending or deleted review comment), it is counted as a matching alert with `fail-closed: true`, and skipped with a warning with `fail-closed: false`.
+
 ### Token Requirements
 
 The `token` input requires a GitHub Access Token with the following permissions:
