@@ -608,6 +608,8 @@ The pull request number.
 .PARAMETER listPullRequestComments
 A script block that returns the pull request comments (for example, with Get-PullRequestComment).
 It is only invoked when html_url cannot be used, so the caller can list the comments once, on first use.
+Its success-stream output is used as the comment list, so it must send any other output (such as workflow
+commands written by GitHubActions' Write-Action* functions) to the host.
 
 .EXAMPLE
 Test-PullRequestCommentInPullRequest -location $location -owner 'owner' -repo 'repo' -pullNumber 42 -listPullRequestComments { Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 }

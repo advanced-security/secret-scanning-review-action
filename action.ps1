@@ -346,7 +346,8 @@ $listPrComments = {
         catch {
             # FailClosed is disabled: still review any comments that were read before the error
             $script:prComments = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
-            Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' PR#$PullRequestNumber. Secrets in PR comments that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+            # This script block's output is used as the comment list, so send the workflow command to the host
+            Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' PR#$PullRequestNumber. Secrets in PR comments that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)" | Out-Host
         }
     }
     return $script:prComments
