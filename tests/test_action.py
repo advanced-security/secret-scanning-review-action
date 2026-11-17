@@ -210,6 +210,17 @@ def github_com_api(monkeypatch):
     monkeypatch.setattr(action, "API_BASE_URL", "https://api.github.com")
 
 
+@pytest.fixture
+def cp1252_default_encoding(monkeypatch):
+    """Make open() in action.py default to cp1252, like Python on a Windows runner (UTF-8 mode off)."""
+    def open_with_cp1252_default(file, mode="r", *args, **kwargs):
+        if "b" not in mode:
+            kwargs.setdefault("encoding", "cp1252")
+        return open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(action, "open", open_with_cp1252_default, raising=False)
+
+
 class TestWorkflowCommandEscaping:
     """Tests for workflow command escaping helpers."""
 
@@ -576,6 +587,33 @@ class TestMainFailClosed:
 
         assert self._run(True) == 0
         assert "::warning file=dir/a%2Cb%3A%3Ac.txt,line=1,col=2::" in capsys.readouterr().out
+
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_summary_and_output_are_utf8(self, mock_pr, _shas, mock_alerts, mock_locations, _dismissal, env, cp1252_default_encoding, capsys):
+        """The summary emoji cannot be encoded in cp1252, so the summary and output files must use UTF-8."""
+        summary, output = env
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [{"type": "commit", "details": {"commit_sha": "abc", "path": "a.txt", "start_line": 1, "start_column": 1}}]
+
+        assert self._run(True) == 0
+        text = summary.read_text(encoding="utf-8")
+        assert "🚨 Found [1] secret scanning alert " in text
+        assert text in capsys.readouterr().out
+        assert '"number": 1' in output.read_text(encoding="utf-8")
+
+    @patch("action.get_pull_request")
+    def test_incomplete_review_summary_and_output_are_utf8(self, mock_pr, env, cp1252_default_encoding):
+        summary, output = env
+        mock_pr.side_effect = action.EvaluationError("Error getting PR", 500)
+
+        assert self._run(False) == 0
+        assert "⚠️ Secret scanning review for PR#1 could not be completed" in summary.read_text(encoding="utf-8")
+        assert "alerts=[]" in output.read_text(encoding="utf-8")
 
 
 class TestGetPullRequestNumberFromRef:
