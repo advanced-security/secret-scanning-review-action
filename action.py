@@ -459,6 +459,27 @@ def get_pull_request_number_from_review_comment_html_url(html_url, repo_owner, r
         return None
     return int(number)
 
+def is_review_comment_in_pull_request(github_token, location, repo_owner, repo_name, pull_request_number, pull_request_url, http_proxy_url, https_proxy_url, verify_ssl):
+    """Return whether a pull_request_review_comment alert location belongs to the pull request.
+
+    Compares the pull request number in the location's html_url (see
+    get_pull_request_number_from_review_comment_html_url) with pull_request_number, without an API call.
+    This also works for pending or deleted review comments, which the API cannot return (404).
+    Only when html_url is missing or not in that format is the review comment read from
+    pull_request_review_comment_url and its pull_request_url compared with pull_request_url.
+    Errors from that lookup (including 404 for pending or deleted review comments) are raised as EvaluationError.
+    Returns False when the location has neither URL.
+    """
+    details = location['details']
+    html_url_pull_request_number = get_pull_request_number_from_review_comment_html_url(details.get('html_url'), repo_owner, repo_name)
+    if html_url_pull_request_number is not None:
+        return html_url_pull_request_number == int(pull_request_number)
+    pr_review_comment_url = details.get('pull_request_review_comment_url')
+    if not pr_review_comment_url:
+        return False
+    pr_review_comment = get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl)
+    return pr_review_comment.get('pull_request_url') == pull_request_url
+
 def get_pull_request_number_from_ref(github_ref):
     """Extract the pull request number from the GITHUB_REF environment variable.
 
@@ -641,22 +662,12 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
             elif location['type'] == 'pull_request_review_comment':
                 # The PR number is read from the location's html_url without an API call, so pending review
                 # comments (which the API cannot return, 404) and comments deleted after detection are matched
-                # only to the PR they were posted on.
-                html_url_pull_request_number = get_pull_request_number_from_review_comment_html_url(location['details'].get('html_url'), repo_owner, repo_name)
-                if html_url_pull_request_number is not None:
-                    if html_url_pull_request_number == int(pull_request_number):
-                        logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
-                        alerts_in_pr.append(alert)
-                        break
-                    continue
-                # html_url is missing or not in the expected format: look up the review comment to confirm it
-                # belongs to this PR (via pull_request_url).
-                # A 404 is counted as a match when fail-closed is enabled, and skipped with a warning otherwise.
+                # only to the PR they were posted on. Only when html_url is missing or not in the expected format
+                # is the review comment looked up to compare its pull_request_url. Then a 404 is counted as a
+                # match when fail-closed is enabled, and skipped with a warning otherwise.
                 pr_review_comment_url = location['details'].get('pull_request_review_comment_url')
-                if not pr_review_comment_url:
-                    continue
                 try:
-                    pr_review_comment = get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl)
+                    in_pull_request = is_review_comment_in_pull_request(github_token, location, repo_owner, repo_name, pull_request_number, pull_request['url'], http_proxy_url, https_proxy_url, verify_ssl)
                 except EvaluationError as err:
                     if err.status_code == 404:
                         if fail_closed:
@@ -669,7 +680,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                     else:
                         handle_evaluation_error(err, fail_closed, evaluation_warnings)
                     continue
-                if pr_review_comment.get('pull_request_url') == pull_request['url']:
+                if in_pull_request:
                     logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR review comment.")
                     alerts_in_pr.append(alert)
                     break
