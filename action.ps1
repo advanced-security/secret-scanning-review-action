@@ -49,6 +49,9 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         an API call. Only when html_url is missing or not in the expected format is the review comment looked up; if
         it is not accessible (404, for example a pending or deleted review comment), it is counted as a match when
         true, and skipped with a warning when false.
+        Secrets in PR comments are also matched by the pull request number in the alert location's html_url, so a
+        comment deleted after detection is still matched. Only when html_url is missing or not in the expected format
+        are the PR comments listed to look up the comment.
         Dismissal request lookups are informational only and never fail the workflow.
         Configuration errors (missing token, event other than pull_request or merge_group) always fail the workflow.
         Default is true.
@@ -340,8 +343,21 @@ foreach ($genericAlert in $genericAlerts) {
 }
 Write-ActionInfo "Found $($alerts.Count) total secret scanning alert$($alerts.Count -eq 1 ? '' : 's') after merging and deduplication"
 
-# PR issue comments are only needed for 'pull_request_comment' locations; fetched once on first use
+# PR issue comments are only listed for 'pull_request_comment' locations without a usable html_url, once on first use
 $prComments = $null
+$listPrComments = {
+    if ($null -eq $script:prComments) {
+        try {
+            $script:prComments = @(Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl)
+        }
+        catch {
+            # FailClosed is disabled: still review any comments that were read before the error
+            $script:prComments = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
+            Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' PR#$PullRequestNumber. Secrets in PR comments that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
+        }
+    }
+    return $script:prComments
+}
 
 #for each secret scanning alert, find the initial location of the secret and theh list
 $alertCount = 0
@@ -403,24 +419,12 @@ foreach ($alert in $alerts) {
                 }
             }
             'pull_request_comment' {
-                if ($null -eq $prComments) {
-                    try {
-                        $prComments = @(Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl)
-                    }
-                    catch {
-                        # FailClosed is disabled: still review any comments that were read before the error
-                        $prComments = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
-                        Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' PR#$PullRequestNumber. Secrets in PR comments that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
-                    }
-                }
-                # Extract comment ID from the URL (last segment of the path)
-                $commentId = Get-IdFromUrl -url $location.details.pull_request_comment_url
-                foreach ($comment in $prComments) {
-                    if ($comment.id -eq $commentId) {
-                        Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR comment."
-                        $matchFound = $true
-                        break
-                    }
+                # The PR number is read from the location's html_url without an API call, so a comment deleted after
+                # detection is still matched to the PR it was posted on. Only when html_url is missing or not in the
+                # expected format are the PR comments listed (once) and the comment looked up by its ID.
+                if (Test-PullRequestCommentInPullRequest -location $location -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -listPullRequestComments $listPrComments) {
+                    Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR comment."
+                    $matchFound = $true
                 }
             }
             'pull_request_review' {

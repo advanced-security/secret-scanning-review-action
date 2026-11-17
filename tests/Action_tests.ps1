@@ -414,6 +414,82 @@ Describe 'Test-ReviewCommentInPullRequest' {
     }
 }
 
+Describe 'Get-PullRequestNumberFromPullRequestCommentHtmlUrl' {
+    It 'Returns the pull request number from <htmlUrl>' -TestCases @(
+        @{ htmlUrl = 'https://github.com/owner/repo/pull/4#issuecomment-1081119451'; expected = 4 }
+        @{ htmlUrl = 'https://github.com/Owner/REPO/pull/12#issuecomment-1'; expected = 12 }
+        @{ htmlUrl = 'https://tenant.ghe.com/owner/repo/pull/7#issuecomment-2'; expected = 7 }
+    ) {
+        param($htmlUrl, $expected)
+        Get-PullRequestNumberFromPullRequestCommentHtmlUrl -htmlUrl $htmlUrl -owner 'owner' -repo 'repo' | Should -Be $expected
+    }
+
+    It 'Returns null when html_url is <case>' -TestCases @(
+        @{ case = 'missing'; htmlUrl = $null }
+        @{ case = 'empty'; htmlUrl = '' }
+        @{ case = 'for another owner'; htmlUrl = 'https://github.com/other/repo/pull/4#issuecomment-1' }
+        @{ case = 'for another repository'; htmlUrl = 'https://github.com/owner/other/pull/4#issuecomment-1' }
+        @{ case = 'without a fragment'; htmlUrl = 'https://github.com/owner/repo/pull/4' }
+        @{ case = 'a review comment fragment'; htmlUrl = 'https://github.com/owner/repo/pull/4#discussion_r1' }
+        @{ case = 'an issue path'; htmlUrl = 'https://github.com/owner/repo/issues/4#issuecomment-1' }
+        @{ case = 'a pulls path'; htmlUrl = 'https://github.com/owner/repo/pulls/4#issuecomment-1' }
+        @{ case = 'a path with extra segments'; htmlUrl = 'https://github.com/owner/repo/pull/4/files#issuecomment-1' }
+        @{ case = 'a non-numeric pull request number'; htmlUrl = 'https://github.com/owner/repo/pull/abc#issuecomment-1' }
+        @{ case = 'followed by a newline'; htmlUrl = "https://github.com/owner/repo/pull/4#issuecomment-1`n" }
+        @{ case = 'relative'; htmlUrl = '/owner/repo/pull/4#issuecomment-1' }
+    ) {
+        param($htmlUrl)
+        Get-PullRequestNumberFromPullRequestCommentHtmlUrl -htmlUrl $htmlUrl -owner 'owner' -repo 'repo' | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Test-PullRequestCommentInPullRequest' {
+    BeforeAll {
+        # Pull request #1 in owner/repo
+        $script:pullRequestArgs = @{
+            owner      = 'owner'
+            repo       = 'repo'
+            pullNumber = 1
+        }
+    }
+
+    It 'Matches an html_url for this pull request without listing comments' {
+        # A comment deleted after detection is no longer listed on the pull request
+        $listCount = [System.Collections.Generic.List[int]]::new()
+        $location = @{ type = 'pull_request_comment'; details = @{
+                pull_request_comment_url = 'https://api.github.com/repos/owner/repo/issues/comments/99'
+                html_url                 = 'https://github.com/owner/repo/pull/1#issuecomment-99'
+            }
+        }
+
+        Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { $listCount.Add(1); @() } | Should -BeTrue
+        $listCount.Count | Should -Be 0
+    }
+
+    It 'Does not match an html_url for another pull request and does not list comments' {
+        $listCount = [System.Collections.Generic.List[int]]::new()
+        $location = @{ type = 'pull_request_comment'; details = @{
+                pull_request_comment_url = 'https://api.github.com/repos/owner/repo/issues/comments/99'
+                html_url                 = 'https://github.com/owner/repo/pull/4#issuecomment-99'
+            }
+        }
+
+        Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { $listCount.Add(1); @() } | Should -BeFalse
+        $listCount.Count | Should -Be 0
+    }
+
+    It 'Falls back to the listed comments when html_url is <case>' -TestCases @(
+        @{ case = 'missing'; details = @{ pull_request_comment_url = 'https://api.github.com/repos/owner/repo/issues/comments/99' } }
+        @{ case = 'malformed'; details = @{ pull_request_comment_url = 'https://api.github.com/repos/owner/repo/issues/comments/99'; html_url = 'https://github.com/owner/repo/pull/1' } }
+    ) {
+        param($details)
+        $location = @{ type = 'pull_request_comment'; details = $details }
+
+        Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { @(@{ id = 98 }, @{ id = 99 }) } | Should -BeTrue
+        Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { @(@{ id = 98 }) } | Should -BeFalse
+    }
+}
+
 Describe 'Get-PullRequestCommitSha' {
     It 'Follows nextLink pagination on the pull request commits endpoint' {
         Mock Invoke-GHRestMethod {
