@@ -58,6 +58,10 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
 
 .PARAMETER DisablePRComment
         If provided, will disable the PR comment feature.
+        Otherwise, a PR comment with the summary is created when matching alerts are found, and the same comment is
+        updated on later runs. When a later run finds no matching alerts, that comment is updated with the new summary,
+        but no comment is created, and the comment is left unchanged when the review could not be fully completed
+        (FailClosed is false and errors were reported as warnings).
         Default is false.
 
 .PARAMETER DisableWorkflowSummary
@@ -567,44 +571,35 @@ if ($alertsInitiatedFromPr.Count -gt 0) {
     $markdownSummary += $markdownSummaryTableRows
 }
 
-# PR Comment Summary only if not disabled and alerts were found
-if (!$DisablePRComment -and $alertsInitiatedFromPr.Count -gt 0) {
-    <# API: GET PR COMMENTS
-    - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment
-    - format: /repos/{owner}/{repo}/issues/{pull_number}/comments
-    #>
-    $commentUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/issues/$PullRequestNumber/comments"
-    $commentsRead = $true
-    try {
-        $comments = @(Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl)
-    }
-    catch {
-        $commentsRead = $false
-        Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' Pull Request#$PullRequestNumber, skipping PR comment.  Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
-    }
-
-    if ($commentsRead) {
-        $prCommentWatermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
-        $existingComment = $comments | Where-Object { $_.body -match $prCommentWatermark } | Select-Object -First 1
-        $comment = @{
-            body = "{0}`n{1}{2}`n<!-- {3} -->" -f $prCommentWatermark, $markdownSummary, (Get-EvaluationWarningMarkdown -Warnings $evaluationWarnings), (Get-Date).ToUniversalTime().ToString("o")
-        }
-        try {
-            if ($null -ne $existingComment) {
-                $commentResponse = Invoke-GHRestMethod -Method PATCH -Uri $existingComment.url -Body $($comment | ConvertTo-Json)
-            }
-            else {
-                $commentResponse = Invoke-GHRestMethod -Method POST -Uri $commentUrl -Body $($comment | ConvertTo-Json)
-            }
-            Write-ActionInfo "Updated PR Comment: $($commentResponse.html_url)"
-        }
-        catch {
-            Invoke-EvaluationError -Message "Error adding comment to '$OrganizationName/$RepositoryName' Pull Request#$PullRequestNumber.  Ensure GITHUB_TOKEN has `pull_requests:write` repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
-        }
-    }
+# PR Comment Summary, unless disabled:
+#   - alerts were found: create the comment, or update the one from an earlier run
+#   - no alerts were found: only update a comment from an earlier run, so it no longer reports alerts that are gone.
+#     No comment is created, and an incomplete review (errors reported as warnings) leaves the earlier comment unchanged.
+if ($DisablePRComment) {
+    Write-ActionDebug "Skipping PR comment update - DisablePRComment is set to $DisablePRComment"
+}
+elseif ($alertsInitiatedFromPr.Count -eq 0 -and $evaluationWarnings.Count -gt 0) {
+    Write-ActionDebug "Skipping PR comment update - no alerts were found, but the review could not be fully completed"
 }
 else {
-    Write-ActionDebug "Skipping PR comment update - DisablePRComment is set to $DisablePRComment and alertsInitiatedFromPr is $($alertsInitiatedFromPr.Count)"
+    <# API: LIST, UPDATE, or CREATE PR COMMENTS
+    - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments
+    - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#update-an-issue-comment
+    - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#create-an-issue-comment
+    - format: /repos/{owner}/{repo}/issues/{pull_number}/comments
+    #>
+    try {
+        $commentResponse = Publish-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -markdownSummary ($markdownSummary + (Get-EvaluationWarningMarkdown -Warnings $evaluationWarnings)) -createIfMissing ($alertsInitiatedFromPr.Count -gt 0) -apiBaseUrl $ApiBaseUrl
+        if ($null -ne $commentResponse) {
+            Write-ActionInfo "Updated PR Comment: $($commentResponse.html_url)"
+        }
+        else {
+            Write-ActionDebug "Skipping PR comment update - no alerts were found and there is no PR comment from an earlier run to update"
+        }
+    }
+    catch {
+        Invoke-EvaluationError -Message $_.Exception.Message
+    }
 }
 
 # Include any errors that were reported as warnings (FailClosed disabled)

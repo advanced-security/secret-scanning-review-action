@@ -15,7 +15,8 @@ BeforeAll {
         param(
             $Method,
             $Uri,
-            $ExtendedResult
+            $ExtendedResult,
+            $Body
         )
     }
     function global:Write-ActionError {
@@ -316,6 +317,63 @@ Describe 'Get-PullRequestComment' {
         Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
             $Uri -like 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments*' -and $Method -eq 'GET'
         }
+    }
+}
+
+Describe 'Publish-PullRequestComment' {
+    BeforeAll {
+        $script:commentArgs = @{ owner = 'owner'; repo = 'repo'; pullNumber = 42 }
+    }
+
+    It 'Updates the summary comment from an earlier run (createIfMissing: <createIfMissing>)' -TestCases @(
+        @{ createIfMissing = $true }
+        @{ createIfMissing = $false }
+    ) {
+        param($createIfMissing)
+        Mock Get-PullRequestComment {
+            @(
+                @{ body = 'Looks good'; url = 'https://api.github.com/repos/owner/repo/issues/comments/1' }
+                @{ body = "<!-- secret-scanning-review-pr-comment-watermark -->`nFound [1] secret scanning alert"; url = 'https://api.github.com/repos/owner/repo/issues/comments/2' }
+            )
+        } -ModuleName ActionHelpers
+        Mock Invoke-GHRestMethod { @{ html_url = 'https://github.com/owner/repo/pull/42#issuecomment-2' } } -ModuleName ActionHelpers
+
+        $result = Publish-PullRequestComment @script:commentArgs -markdownSummary 'Found [0] secret scanning alerts' -createIfMissing $createIfMissing
+        $result.html_url | Should -Be 'https://github.com/owner/repo/pull/42#issuecomment-2'
+        Should -Invoke Invoke-GHRestMethod -Times 1 -Exactly -ModuleName ActionHelpers
+        Should -Invoke Invoke-GHRestMethod -Times 1 -Exactly -ModuleName ActionHelpers -ParameterFilter {
+            $Method -eq 'PATCH' -and $Uri -eq 'https://api.github.com/repos/owner/repo/issues/comments/2' -and
+            ($Body | ConvertFrom-Json).body.StartsWith("<!-- secret-scanning-review-pr-comment-watermark -->`nFound [0] secret scanning alerts`n<!-- ")
+        }
+    }
+
+    It 'Creates a comment when there is none and createIfMissing is true' {
+        Mock Get-PullRequestComment { @(@{ body = 'Looks good'; url = 'https://api.tenant.ghe.com/repos/owner/repo/issues/comments/1' }) } -ModuleName ActionHelpers
+        Mock Invoke-GHRestMethod { @{ html_url = 'https://tenant.ghe.com/owner/repo/pull/42#issuecomment-3' } } -ModuleName ActionHelpers
+
+        Publish-PullRequestComment @script:commentArgs -markdownSummary 'Found [1] secret scanning alert' -apiBaseUrl 'https://api.tenant.ghe.com' | Should -Not -BeNullOrEmpty
+        Should -Invoke Invoke-GHRestMethod -Times 1 -Exactly -ModuleName ActionHelpers -ParameterFilter {
+            $Method -eq 'POST' -and $Uri -eq 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments'
+        }
+    }
+
+    It 'Does not create a comment when there is none and createIfMissing is false' {
+        Mock Get-PullRequestComment { @(@{ body = 'Looks good'; url = 'https://api.github.com/repos/owner/repo/issues/comments/1' }) } -ModuleName ActionHelpers
+        Mock Invoke-GHRestMethod { } -ModuleName ActionHelpers
+
+        Publish-PullRequestComment @script:commentArgs -markdownSummary 'Found [0] secret scanning alerts' -createIfMissing $false | Should -BeNullOrEmpty
+        Should -Invoke Invoke-GHRestMethod -Times 0 -Exactly -ModuleName ActionHelpers
+    }
+
+    It 'Throws an error naming the failed request when the comments cannot be read' {
+        Mock Get-PullRequestComment { throw 'Server Error' } -ModuleName ActionHelpers
+        { Publish-PullRequestComment @script:commentArgs -markdownSummary 'summary' } | Should -Throw "Error reading comments from 'owner/repo' Pull Request#42*Server Error*"
+    }
+
+    It 'Throws an error naming the failed request when the comment cannot be written' {
+        Mock Get-PullRequestComment { } -ModuleName ActionHelpers
+        Mock Invoke-GHRestMethod { throw 'Forbidden' } -ModuleName ActionHelpers
+        { Publish-PullRequestComment @script:commentArgs -markdownSummary 'summary' } | Should -Throw "Error adding comment to 'owner/repo' Pull Request#42*Forbidden*"
     }
 }
 

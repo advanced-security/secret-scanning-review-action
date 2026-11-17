@@ -75,6 +75,8 @@ The Action summarizes all secrets introduced in the pull request in the workflow
 By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
 ![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/6b08949d-8d60-425e-99a2-ee30bd6735ce)
 
+The Action keeps a single comment on the pull request and updates it on later runs. When a later run finds no secrets that originated from the pull request (for example, after the commit that introduced a secret was removed from the pull request), the comment is updated with the new summary, so it no longer lists them. A comment is never added to a pull request where no secrets were found. When no secrets were found but the review could not be fully completed (`fail-closed: false`, see [Handling API errors](#handling-api-errors)), a comment from an earlier run is left unchanged.
+
 ## Security Model Considerations
 
 - To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
@@ -114,7 +116,7 @@ By default, when any secrets are found the Action will also add a comment to the
 Both runtimes handle GitHub API errors the same way, controlled by `fail-closed`:
 
 - **`fail-closed: true` (default)**: any API error that prevents a complete review fails the workflow. Use this when the action is a required status check, so an incomplete review never reports success.
-- **`fail-closed: false`**: API errors are reported as `warning` annotations and listed in the workflow summary, and the step does not fail because of them. The PR comment is only posted when matching alerts are found, so warnings appear there only in that case. Alerts that could still be evaluated are reported as usual, and `fail-on-alert` still fails the workflow when a matching alert is found. If a required lookup fails (the pull request, its commits, or the secret scanning alerts), the review ends early with an "incomplete" workflow summary, an empty `alerts` output, and no PR comment.
+- **`fail-closed: false`**: API errors are reported as `warning` annotations and listed in the workflow summary, and the step does not fail because of them. Warnings are only included in the PR comment when matching alerts are found: when none are found, an incomplete review leaves a PR comment from an earlier run unchanged. Alerts that could still be evaluated are reported as usual, and `fail-on-alert` still fails the workflow when a matching alert is found. If a required lookup fails (the pull request, its commits, or the secret scanning alerts), the review ends early with an "incomplete" workflow summary, an empty `alerts` output, and no PR comment.
 
 Regardless of `fail-closed`:
 

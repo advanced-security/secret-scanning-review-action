@@ -301,6 +301,79 @@ function Get-PullRequestComment {
 
 <#
 .SYNOPSIS
+Creates or updates the action's summary comment on a pull request.
+
+.DESCRIPTION
+Lists the pull request comments (see Get-PullRequestComment) and updates the first comment that contains the
+action's watermark with the markdown summary. When there is no such comment, a new comment is created, unless
+createIfMissing is $false. The caller passes $false when no alerts were found, so a summary comment from an
+earlier run is corrected, but no new comment is added.
+Returns the created or updated comment, or $null when no comment was written.
+Errors are thrown with a message that describes the failed request, so the caller can decide (via the
+fail-closed setting) whether the error fails the review or is reported as a warning.
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER pullNumber
+The pull request number.
+
+.PARAMETER markdownSummary
+The markdown summary to write. The watermark and a timestamp are added to the comment.
+
+.PARAMETER createIfMissing
+Whether to create a comment when the pull request has no summary comment yet. Defaults to $true.
+
+.PARAMETER apiBaseUrl
+The GitHub API base URL (e.g., https://api.github.com or https://api.<tenant>.ghe.com).
+Defaults to https://api.github.com.
+
+.EXAMPLE
+Publish-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 -markdownSummary $markdownSummary -createIfMissing $false
+Updates the summary comment on pull request #42 from an earlier run, and returns $null when there is none.
+#>
+function Publish-PullRequestComment {
+    param(
+        [string]$owner,
+        [string]$repo,
+        [int]$pullNumber,
+        [string]$markdownSummary,
+        [bool]$createIfMissing = $true,
+        [string]$apiBaseUrl = 'https://api.github.com'
+    )
+
+    try {
+        $comments = @(Get-PullRequestComment -owner $owner -repo $repo -pullNumber $pullNumber -apiBaseUrl $apiBaseUrl)
+    }
+    catch {
+        throw "Error reading comments from '$owner/$repo' Pull Request#$pullNumber, skipping PR comment.  Ensure GITHUB_TOKEN has ``pull_requests:read`` repo permissions. (StatusCode:$(Get-ErrorStatusCode -ErrorRecord $_) Message:$($_.Exception.Message))"
+    }
+
+    $prCommentWatermark = '<!-- secret-scanning-review-pr-comment-watermark -->'
+    $existingComment = $comments | Where-Object { $_.body -match $prCommentWatermark } | Select-Object -First 1
+    if ($null -eq $existingComment -and -not $createIfMissing) {
+        return $null
+    }
+
+    $comment = @{
+        body = "{0}`n{1}`n<!-- {2} -->" -f $prCommentWatermark, $markdownSummary, (Get-Date).ToUniversalTime().ToString('o')
+    }
+    try {
+        if ($null -ne $existingComment) {
+            return Invoke-GHRestMethod -Method PATCH -Uri $existingComment.url -Body ($comment | ConvertTo-Json)
+        }
+        return Invoke-GHRestMethod -Method POST -Uri "$($apiBaseUrl.TrimEnd('/'))/repos/$owner/$repo/issues/$pullNumber/comments" -Body ($comment | ConvertTo-Json)
+    }
+    catch {
+        throw "Error adding comment to '$owner/$repo' Pull Request#$pullNumber.  Ensure GITHUB_TOKEN has ``pull_requests:write`` repo permissions. (StatusCode:$(Get-ErrorStatusCode -ErrorRecord $_) Message:$($_.Exception.Message))"
+    }
+}
+
+<#
+.SYNOPSIS
 Gets the HTTP status code from an API error record.
 
 .DESCRIPTION
@@ -863,4 +936,4 @@ function Get-PullRequestNumberFromRef {
     return $null
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef

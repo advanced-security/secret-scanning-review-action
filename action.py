@@ -316,7 +316,14 @@ def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, h
             status_code
         ) from err
 
-def update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary, http_proxy_url, https_proxy_url, verify_ssl):
+def update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary, http_proxy_url, https_proxy_url, verify_ssl, create_if_missing=True):
+    """Create or update the action's summary comment on the pull request.
+
+    Updates the first comment that contains the action's watermark with markdown_summary. When there is none,
+    a new comment is created, unless create_if_missing is False. The caller passes False when no alerts were
+    found, so a summary comment from an earlier run is corrected, but no new comment is added.
+    Errors are raised as EvaluationError.
+    """
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment    
     comments = []
     per_page = 100
@@ -345,6 +352,9 @@ def update_pull_request_comment(github_token, repo_owner, repo_name, pull_reques
         raise EvaluationError(f"Error reading comments from '{repo_owner}/{repo_name}' Pull Request#{pull_request_number}, skipping PR comment. Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:{status_code} Message:{e})", status_code) from e
     pr_comment_watermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
     existing_comment = next((comment for comment in comments if pr_comment_watermark in comment['body']), None)
+    if existing_comment is None and not create_if_missing:
+        print("No PR comment from an earlier run to update")
+        return
     comment = {
         'body': f"{pr_comment_watermark}\n{markdown_summary}\n<!-- {datetime.now(timezone.utc).isoformat()} -->"
     }
@@ -835,14 +845,19 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         )
         markdown_summary += markdown_summary_table_rows
     
-    # PR Comment Summary only if not disabled and alerts were found
-    if not disable_pr_comment and len(alerts_in_pr) > 0:
+    # PR Comment Summary, unless disabled:
+    # - alerts were found: create the comment, or update the one from an earlier run
+    # - no alerts were found: only update a comment from an earlier run, so it no longer reports alerts that are gone.
+    #   No comment is created, and an incomplete review (errors reported as warnings) leaves the earlier comment unchanged.
+    if disable_pr_comment:
+        print(f"Skipping PR comment update - disable-pr-comment is set to {disable_pr_comment}")
+    elif not alerts_in_pr and evaluation_warnings:
+        print("Skipping PR comment update - no alerts were found, but the review could not be fully completed")
+    else:
         try:
-            update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary + get_evaluation_warning_markdown(evaluation_warnings), http_proxy_url, https_proxy_url, verify_ssl)
+            update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary + get_evaluation_warning_markdown(evaluation_warnings), http_proxy_url, https_proxy_url, verify_ssl, create_if_missing=len(alerts_in_pr) > 0)
         except EvaluationError as err:
             handle_evaluation_error(err, fail_closed, evaluation_warnings)
-    else:
-        print(f"Skipping PR comment update - disable-pr-comment is set to {disable_pr_comment} and alert count in PR is {len(alerts_in_pr)}")
 
     # Include any errors that were reported as warnings (fail-closed disabled)
     markdown_summary += get_evaluation_warning_markdown(evaluation_warnings)
