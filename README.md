@@ -116,7 +116,7 @@ The Action keeps a single comment on the pull request and updates it on later ru
 Both runtimes handle GitHub API errors the same way, controlled by `fail-closed`:
 
 - **`fail-closed: true` (default)**: any API error that prevents a complete review fails the workflow. Use this when the action is a required status check, so an incomplete review never reports success.
-- **`fail-closed: false`**: API errors are reported as `warning` annotations and listed in the workflow summary, and the step does not fail because of them. Warnings are only included in the PR comment when matching alerts are found: when none are found, an incomplete review leaves a PR comment from an earlier run unchanged. Alerts that could still be evaluated are reported as usual, and `fail-on-alert` still fails the workflow when a matching alert is found. If a required lookup fails (the pull request, its commits, or the secret scanning alerts), the review ends early with an "incomplete" workflow summary, an empty `alerts` output, and no PR comment.
+- **`fail-closed: false`**: API errors are reported as `warning` annotations and listed in the workflow summary, and the step does not fail because of them. Warnings are only included in the PR comment when matching alerts are found: when none are found, an incomplete review leaves a PR comment from an earlier run unchanged. Alerts that could still be evaluated are reported as usual, and `fail-on-alert` still fails the workflow when a matching alert is found. If a required lookup fails (the pull request, its commits, or the secret scanning alerts), the review ends early with an "incomplete" workflow summary, an empty `alerts` array (`[]`), and no PR comment.
 
 Regardless of `fail-closed`:
 

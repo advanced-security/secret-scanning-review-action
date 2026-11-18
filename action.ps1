@@ -604,25 +604,8 @@ else {
     Write-ActionDebug $(Get-Content $env:GITHUB_STEP_SUMMARY)
 }
 
-# Create step output JSON with alert metadata
-$stepOutput = @()
-foreach ($alert in $alertsInitiatedFromPr) {
-    $stepOutput += @{
-        number                      = $alert.number
-        secret_type                 = $alert.secret_type
-        push_protection_bypassed    = $alert.push_protection_bypassed
-        push_protection_bypassed_by = $alert.push_protection_bypassed_by
-        state                       = $alert.state
-        resolution                  = $alert.resolution
-        validity                    = $alert.validity
-        validity_checked_at         = $alert.validity_checked_at
-        html_url                    = $alert.html_url
-        dismissal_request_status    = $alert.dismissal_request_status
-    }
-}
-
-# Convert step output to JSON (Depth 3 is sufficient for the nested structure: array of objects with possible nested objects)
-$stepOutputJson = $stepOutput | ConvertTo-Json -Compress -Depth 3
+# Create step output JSON with alert metadata: always a JSON array ('[]' when no alerts were found)
+$stepOutputJson = ConvertTo-AlertStepOutputJson -alerts $alertsInitiatedFromPr
 
 # Write step output to GITHUB_OUTPUT environment file
 if ($env:GITHUB_OUTPUT) {
