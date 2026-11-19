@@ -944,23 +944,140 @@ Describe 'Get-AlertDismissalState' {
 }
 
 Describe 'Get-PullRequestNumberFromRef' {
-    It 'Extracts PR number from pull_request event ref' {
-        Get-PullRequestNumberFromRef -githubRef 'refs/pull/120/merge' | Should -Be '120'
+    # Same cases as TestGetPullRequestNumberFromRef in tests/test_action.py, so both runtimes read the same number
+    It 'Parses ''<githubRef>''' -TestCases @(
+        @{ githubRef = 'refs/pull/120/merge'; expected = '120' }
+        @{ githubRef = 'refs/heads/gh-readonly-queue/main/pr-120-abcdef1234567890abcdef1234567890abcdef12'; expected = '120' }
+        @{ githubRef = 'refs/heads/gh-readonly-queue/releases/1.0/pr-42-abcdef1234567890abcdef1234567890abcdef12'; expected = '42' }
+        @{ githubRef = 'refs/heads/gh-readonly-queue/release/refs/pull/7/pr-120-abcdef1234567890abcdef1234567890abcdef12'; expected = '120' }
+        @{ githubRef = 'refs/heads/release/refs/pull/7/merge'; expected = $null }
+        @{ githubRef = 'REFS/PULL/120/MERGE'; expected = $null }
+        @{ githubRef = 'refs/heads/main'; expected = $null }
+        @{ githubRef = ''; expected = $null }
+    ) {
+        param($githubRef, $expected)
+        Should -ActualValue (Get-PullRequestNumberFromRef -githubRef $githubRef) -Be $expected
+    }
+}
+
+Describe 'Get-MergeGroupBaseBranchFromRef' {
+    It 'Parses ''<githubRef>''' -TestCases @(
+        @{ githubRef = 'refs/heads/gh-readonly-queue/main/pr-120-abcdef1234567890abcdef1234567890abcdef12'; expected = 'main' }
+        @{ githubRef = 'refs/heads/gh-readonly-queue/releases/1.0/pr-42-abcdef1234567890abcdef1234567890abcdef12'; expected = 'releases/1.0' }
+        @{ githubRef = 'refs/heads/gh-readonly-queue/release/refs/pull/7/pr-120-abcdef1234567890abcdef1234567890abcdef12'; expected = 'release/refs/pull/7' }
+        @{ githubRef = 'refs/pull/120/merge'; expected = $null }
+        @{ githubRef = ''; expected = $null }
+    ) {
+        param($githubRef, $expected)
+        Should -ActualValue (Get-MergeGroupBaseBranchFromRef -githubRef $githubRef) -Be $expected
+    }
+}
+
+Describe 'Get-MergeQueueGroupingStrategy' {
+    It 'Reads a ruleset''s <strategy> setting without a GraphQL call' -TestCases @(
+        @{ strategy = 'ALLGREEN' }
+        @{ strategy = 'HEADGREEN' }
+    ) {
+        param($strategy)
+        Mock Invoke-GHRestMethod {
+            @{ result = @(@{ type = 'pull_request'; parameters = @{} }, @{ type = 'merge_queue'; parameters = @{ grouping_strategy = $strategy } }); nextLink = $null }
+        } -ModuleName ActionHelpers
+
+        $result = Get-MergeQueueGroupingStrategy -owner 'o' -repo 'r' -branch 'release/1.0'
+
+        $result.Strategy | Should -Be $strategy
+        $result.Source | Should -Be 'ruleset'
+        Should -Invoke Invoke-GHRestMethod -Times 1 -Exactly -ModuleName ActionHelpers -ParameterFilter { $Method -eq 'GET' -and $Uri -eq 'https://api.github.com/repos/o/r/rules/branches/release%2F1.0?per_page=100' }
+        Should -Invoke Invoke-GHRestMethod -Times 0 -ModuleName ActionHelpers -ParameterFilter { $Method -eq 'POST' }
     }
 
-    It 'Extracts PR number from merge_group event ref' {
-        Get-PullRequestNumberFromRef -githubRef 'refs/heads/gh-readonly-queue/main/pr-120-abcdef1234567890abcdef1234567890abcdef12' | Should -Be '120'
+    It 'Returns HEADGREEN when any ruleset turns the setting off' {
+        Mock Invoke-GHRestMethod {
+            @{ result = @(@{ type = 'merge_queue'; parameters = @{ grouping_strategy = 'ALLGREEN' } }, @{ type = 'merge_queue'; parameters = @{ grouping_strategy = 'HEADGREEN' } }); nextLink = $null }
+        } -ModuleName ActionHelpers
+
+        (Get-MergeQueueGroupingStrategy -owner 'o' -repo 'r' -branch 'main').Strategy | Should -Be 'HEADGREEN'
     }
 
-    It 'Extracts PR number from merge_group event ref with slash in base branch' {
-        Get-PullRequestNumberFromRef -githubRef 'refs/heads/gh-readonly-queue/releases/1.0/pr-42-abcdef1234567890abcdef1234567890abcdef12' | Should -Be '42'
+    It 'Reads a branch protection rule''s <strategy> setting from GraphQL' -TestCases @(
+        @{ strategy = 'ALLGREEN' }
+        @{ strategy = 'HEADGREEN' }
+    ) {
+        param($strategy)
+        Mock Invoke-GHRestMethod { @{ result = @(@{ type = 'pull_request'; parameters = @{} }); nextLink = $null } } -ModuleName ActionHelpers -ParameterFilter { $Method -eq 'GET' }
+        Mock Invoke-GHRestMethod {
+            [pscustomobject]@{ data = [pscustomobject]@{ repository = [pscustomobject]@{ mergeQueue = [pscustomobject]@{ configuration = [pscustomobject]@{ mergingStrategy = $strategy } } } } }
+        } -ModuleName ActionHelpers -ParameterFilter { $Method -eq 'POST' }
+
+        $result = Get-MergeQueueGroupingStrategy -owner 'o' -repo 'r' -branch 'main' -graphQlUrl 'https://ghes.example.com/api/graphql'
+
+        $result.Strategy | Should -Be $strategy
+        $result.Source | Should -Be 'branch protection rule'
+        Should -Invoke Invoke-GHRestMethod -Times 1 -Exactly -ModuleName ActionHelpers -ParameterFilter {
+            $Method -eq 'POST' -and $Uri -eq 'https://ghes.example.com/api/graphql' -and ($Body | ConvertFrom-Json).variables.branch -eq 'main'
+        }
     }
 
-    It 'Returns null for an unrecognized ref' {
-        Get-PullRequestNumberFromRef -githubRef 'refs/heads/main' | Should -BeNullOrEmpty
+    It 'Reports that the setting cannot be read when <case>' -TestCases @(
+        @{ case = 'GraphQL returns no configuration'; reason = 'the token cannot read its settings'
+            response = [pscustomobject]@{ data = [pscustomobject]@{ repository = [pscustomobject]@{ mergeQueue = [pscustomobject]@{ configuration = $null } } } } }
+        @{ case = 'GraphQL returns a FORBIDDEN error'; reason = 'the token cannot read its settings (Resource not accessible by personal access token)'
+            response = [pscustomobject]@{ data = [pscustomobject]@{ repository = [pscustomobject]@{ mergeQueue = $null } }; errors = @([pscustomobject]@{ type = 'FORBIDDEN'; message = 'Resource not accessible by personal access token' }) } }
+        @{ case = 'there is no merge queue'; reason = 'no merge queue was found for the branch'
+            response = [pscustomobject]@{ data = [pscustomobject]@{ repository = [pscustomobject]@{ mergeQueue = $null } } } }
+    ) {
+        # Pester defines the test case values as variables, which the Mock script blocks use
+        Mock Invoke-GHRestMethod { @{ result = @(@{ type = 'pull_request'; parameters = @{} }); nextLink = $null } } -ModuleName ActionHelpers -ParameterFilter { $Method -eq 'GET' }
+        Mock Invoke-GHRestMethod { $response } -ModuleName ActionHelpers -ParameterFilter { $Method -eq 'POST' }
+
+        $result = Get-MergeQueueGroupingStrategy -owner 'o' -repo 'r' -branch 'main'
+
+        $result.Strategy | Should -BeNullOrEmpty
+        $result.Reason | Should -Be $reason
     }
 
-    It 'Returns null for an empty ref' {
-        Get-PullRequestNumberFromRef -githubRef '' | Should -BeNullOrEmpty
+    It 'Throws when <case>' -TestCases @(
+        @{ case = 'the rulesets cannot be read'; failRules = $true; graphQl = $null; expected = "Error reading the rulesets that apply to 'o/r' branch 'main'*Server Error*" }
+        @{ case = 'the GraphQL request fails'; failRules = $false; graphQl = { throw 'Bad Gateway' }; expected = "Error reading the merge queue settings for 'o/r' branch 'main'*Bad Gateway*" }
+        @{ case = 'GraphQL returns another error'; failRules = $false; graphQl = { [pscustomobject]@{ data = $null; errors = @([pscustomobject]@{ type = 'INTERNAL'; message = 'Something went wrong' }) } }; expected = "*(GraphQL errors: Something went wrong)" }
+    ) {
+        # Pester defines the test case values as variables, which the Mock script blocks use
+        Mock Invoke-GHRestMethod { if ($failRules) { throw 'Server Error' }; @{ result = @(@{ type = 'pull_request'; parameters = @{} }); nextLink = $null } } -ModuleName ActionHelpers -ParameterFilter { $Method -eq 'GET' }
+        Mock Invoke-GHRestMethod { & $graphQl } -ModuleName ActionHelpers -ParameterFilter { $Method -eq 'POST' }
+
+        { Get-MergeQueueGroupingStrategy -owner 'o' -repo 'r' -branch 'main' } | Should -Throw $expected
+    }
+}
+
+Describe 'Get-MergeGroupReviewCoverage' {
+    It 'Returns null without an API call for a pull_request event ref' {
+        Mock Invoke-GHRestMethod { } -ModuleName ActionHelpers
+
+        Get-MergeGroupReviewCoverage -githubRef 'refs/pull/120/merge' -owner 'o' -repo 'r' -pullNumber '120' | Should -BeNullOrEmpty
+        Should -Invoke Invoke-GHRestMethod -Times 0 -ModuleName ActionHelpers
+    }
+
+    It 'Returns <status> when the setting is <case>' -TestCases @(
+        @{ case = 'on in a ruleset'; strategy = 'ALLGREEN'; source = 'ruleset'; reason = $null; status = 'Covered'
+            expected = "Merge queue for 'release/refs/pull/7' has 'Require all queue entries to pass required checks' turned on in its ruleset, so each pull request ahead of PR#120 in this merge group must pass its own merge group checks to merge." }
+        @{ case = 'off in a branch protection rule'; strategy = 'HEADGREEN'; source = 'branch protection rule'; reason = $null; status = 'NotCovered'
+            expected = "Merge queue for 'release/refs/pull/7' has 'Only merge non-failing pull requests' turned off in its branch protection rule (grouping strategy HEADGREEN), so a merge group merges all of its pull requests when the checks for the last one pass. This action only reviews that last pull request (PR#120), so secrets in the pull requests ahead of it in the group could be merged. Turn on 'Only merge non-failing pull requests' for the merge queue of 'release/refs/pull/7'." }
+        @{ case = 'not readable'; strategy = $null; source = $null; reason = 'the token cannot read its settings'; status = 'Unverified'
+            expected = "Could not verify that the merge queue for 'release/refs/pull/7' requires each pull request to pass its own required checks: the token cannot read its settings. This action only reviews PR#120, *" }
+    ) {
+        # Pester defines the test case values as variables, which the Mock script block uses
+        Mock Get-MergeQueueGroupingStrategy { [pscustomobject]@{ Strategy = $strategy; Source = $source; Reason = $reason } } -ModuleName ActionHelpers
+
+        $result = Get-MergeGroupReviewCoverage -githubRef 'refs/heads/gh-readonly-queue/release/refs/pull/7/pr-120-abcdef1234567890abcdef1234567890abcdef12' -owner 'o' -repo 'r' -pullNumber '120'
+
+        $result.Status | Should -Be $status
+        $result.Message | Should -BeLikeExactly $expected
+        Should -Invoke Get-MergeQueueGroupingStrategy -Times 1 -Exactly -ModuleName ActionHelpers -ParameterFilter { $branch -eq 'release/refs/pull/7' }
+    }
+}
+
+Describe 'Write-ActionNotice' {
+    It 'Returns the notice workflow command with the message escaped' {
+        Write-ActionNotice -Message "50% done`r`nnext" | Should -Be '::notice::50%25 done%0D%0Anext'
     }
 }

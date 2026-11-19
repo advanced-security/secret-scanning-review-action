@@ -1041,6 +1041,9 @@ Extracts the pull request number from the GITHUB_REF environment variable.
 Supports both the standard `pull_request` event ref format (refs/pull/:prNumber/merge)
 and the `merge_group` event ref format used by GitHub merge queues
 (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha).
+Both formats are matched from the start of the ref and are case-sensitive, as in the Python runtime, so a
+base branch name that contains 'refs/pull/<n>' does not change the result. The base branch name can contain
+slashes: the pull request number is read from the last '/pr-<n>-' segment.
 Returns $null if the ref does not match either format.
 
 .PARAMETER githubRef
@@ -1059,15 +1062,252 @@ function Get-PullRequestNumberFromRef {
         [string]$githubRef
     )
 
-    if ($githubRef -match 'refs/pull/([0-9]+)') {
+    if ($githubRef -cmatch '^refs/pull/([0-9]+)') {
         return $matches[1]
     }
 
-    if ($githubRef -match 'refs/heads/gh-readonly-queue/.+/pr-([0-9]+)-') {
+    if ($githubRef -cmatch '^refs/heads/gh-readonly-queue/.+/pr-([0-9]+)-') {
         return $matches[1]
     }
 
     return $null
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PagedResult, Get-AlertLocationsUrl, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, ConvertTo-AlertStepOutputJson, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef
+<#
+.SYNOPSIS
+Extracts the base branch of a merge queue merge group from the GITHUB_REF environment variable.
+
+.DESCRIPTION
+Returns the base branch from the `merge_group` event ref format used by GitHub merge queues
+(refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha). The base branch name can contain slashes: it ends
+at the last '/pr-<n>-' segment, which Get-PullRequestNumberFromRef reads the pull request number from.
+The ref is matched from the start and is case-sensitive, as in the Python runtime.
+Returns $null for any other ref, such as the `pull_request` event ref (refs/pull/:prNumber/merge).
+
+.PARAMETER githubRef
+The value of the GITHUB_REF environment variable.
+
+.EXAMPLE
+Get-MergeGroupBaseBranchFromRef -githubRef 'refs/heads/gh-readonly-queue/release/1.0/pr-42-abcdef1234567890abcdef1234567890abcdef12'
+Returns: 'release/1.0'
+#>
+function Get-MergeGroupBaseBranchFromRef {
+    param(
+        [string]$githubRef
+    )
+
+    if ($githubRef -cmatch '^refs/heads/gh-readonly-queue/(.+)/pr-[0-9]+-') {
+        return $matches[1]
+    }
+
+    return $null
+}
+
+<#
+.SYNOPSIS
+Gets the grouping strategy of the merge queue for a branch.
+
+.DESCRIPTION
+Returns an object with:
+- Strategy: 'ALLGREEN' when each pull request in a merge group must pass its own required checks to merge
+  ('Require all queue entries to pass required checks' in a ruleset, 'Only merge non-failing pull requests' in a
+  branch protection rule), 'HEADGREEN' when that setting is off, or $null when it could not be read.
+- Source: 'ruleset' or 'branch protection rule', or $null when Strategy is $null.
+- Reason: why the setting could not be read, or $null when Strategy is set.
+
+The merge queue rules of the active rulesets that apply to the branch are read first (REST API, get rules for a
+branch), which only needs the metadata permission that every token has. When any of them turns the setting off,
+the strategy is HEADGREEN.
+A merge queue required by a branch protection rule is not listed there, so its setting is then read from the
+GraphQL API (repository.mergeQueue). GraphQL only returns the setting when the token can read the merge queue
+settings: for example, a classic token of a user with write access to the repository. Otherwise it returns no
+configuration (or a FORBIDDEN error), which is reported as a Reason rather than as an error.
+Other API errors are thrown with a message that describes the failed request.
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER branch
+The base branch of the merge queue.
+
+.PARAMETER apiBaseUrl
+The GitHub API base URL. Defaults to https://api.github.com.
+
+.PARAMETER graphQlUrl
+The GitHub GraphQL API URL. Defaults to https://api.github.com/graphql.
+
+.EXAMPLE
+Get-MergeQueueGroupingStrategy -owner 'owner' -repo 'repo' -branch 'main'
+Returns: @{ Strategy = 'ALLGREEN'; Source = 'ruleset'; Reason = $null }
+#>
+function Get-MergeQueueGroupingStrategy {
+    param(
+        [string]$owner,
+        [string]$repo,
+        [string]$branch,
+        [string]$apiBaseUrl = 'https://api.github.com',
+        [string]$graphQlUrl = 'https://api.github.com/graphql'
+    )
+
+    $knownStrategies = @('ALLGREEN', 'HEADGREEN')
+    $rulesUrl = "$($apiBaseUrl.TrimEnd('/'))/repos/$owner/$repo/rules/branches/$([uri]::EscapeDataString($branch))?per_page=100"
+    try {
+        $rules = @(Get-PagedResult -url $rulesUrl)
+    }
+    catch {
+        throw "Error reading the rulesets that apply to '$owner/$repo' branch '$branch', so its merge queue settings could not be verified. (StatusCode:$(Get-ErrorStatusCode -ErrorRecord $_) Message:$($_.Exception.Message))"
+    }
+
+    $mergeQueueRules = @($rules | Where-Object { $_.type -ceq 'merge_queue' })
+    if ($mergeQueueRules.Count -gt 0) {
+        $rulesetStrategies = @($mergeQueueRules | ForEach-Object { [string]$_.parameters.grouping_strategy })
+        $unknownStrategies = @($rulesetStrategies | Where-Object { $_ -cnotin $knownStrategies })
+        if ($rulesetStrategies -ccontains 'HEADGREEN') {
+            return [pscustomobject]@{ Strategy = 'HEADGREEN'; Source = 'ruleset'; Reason = $null }
+        }
+        if ($unknownStrategies.Count -gt 0) {
+            return [pscustomobject]@{ Strategy = $null; Source = $null; Reason = "unknown grouping strategy '$($unknownStrategies[0])'" }
+        }
+        return [pscustomobject]@{ Strategy = 'ALLGREEN'; Source = 'ruleset'; Reason = $null }
+    }
+
+    $query = 'query($owner: String!, $repo: String!, $branch: String!) { repository(owner: $owner, name: $repo) { mergeQueue(branch: $branch) { configuration { mergingStrategy } } } }'
+    $body = ConvertTo-Json -InputObject @{ query = $query; variables = @{ owner = $owner; repo = $repo; branch = $branch } } -Compress -Depth 3
+    try {
+        $response = Invoke-GHRestMethod -Method POST -Uri $graphQlUrl -Body $body
+    }
+    catch {
+        throw "Error reading the merge queue settings for '$owner/$repo' branch '$branch'. (StatusCode:$(Get-ErrorStatusCode -ErrorRecord $_) Message:$($_.Exception.Message))"
+    }
+
+    $mergeQueue = $response.data.repository.mergeQueue
+    $strategy = $mergeQueue.configuration.mergingStrategy
+    if ($strategy -cin $knownStrategies) {
+        return [pscustomobject]@{ Strategy = $strategy; Source = 'branch protection rule'; Reason = $null }
+    }
+
+    $graphQlErrors = @($response.errors | Where-Object { $null -ne $_ })
+    if ($graphQlErrors.Count -gt 0) {
+        # A token that cannot read the repository's merge queue gets a FORBIDDEN (or NOT_FOUND) error
+        if (@($graphQlErrors | Where-Object { $_.type -cnotin @('FORBIDDEN', 'NOT_FOUND') }).Count -eq 0) {
+            return [pscustomobject]@{ Strategy = $null; Source = $null; Reason = "the token cannot read its settings ($($graphQlErrors[0].message))" }
+        }
+        throw "Error reading the merge queue settings for '$owner/$repo' branch '$branch'. (GraphQL errors: $(($graphQlErrors | ForEach-Object { $_.message }) -join '; '))"
+    }
+    if ($null -eq $mergeQueue) {
+        return [pscustomobject]@{ Strategy = $null; Source = $null; Reason = 'no merge queue was found for the branch' }
+    }
+    if ($null -eq $mergeQueue.configuration) {
+        # GraphQL returns no configuration, without an error, when the token cannot read the merge queue settings
+        return [pscustomobject]@{ Strategy = $null; Source = $null; Reason = 'the token cannot read its settings' }
+    }
+    return [pscustomobject]@{ Strategy = $null; Source = $null; Reason = "unknown grouping strategy '$strategy'" }
+}
+
+<#
+.SYNOPSIS
+Checks whether reviewing the pull request named in a merge group ref covers the whole merge group.
+
+.DESCRIPTION
+A merge queue builds each merge group from the base branch and every pull request ahead of it in the queue, but
+the merge group ref (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha) only names the last pull request,
+which is the one the action reviews. That covers the group only when the merge queue requires each pull request to
+pass its own required checks (grouping strategy ALLGREEN), because each pull request ahead of it was then reviewed
+by its own merge group checks before it could merge.
+
+Returns $null, without an API call, when githubRef is not a merge group ref (for example, a pull_request event).
+Otherwise reads the merge queue setting with Get-MergeQueueGroupingStrategy and returns an object with:
+- Status: 'Covered' (ALLGREEN), 'NotCovered' (HEADGREEN), or 'Unverified' (the setting could not be read).
+- Message: the message to report, which explains the setting and how to turn it on when it is off.
+API errors are thrown (see Get-MergeQueueGroupingStrategy).
+
+.PARAMETER githubRef
+The value of the GITHUB_REF environment variable.
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER pullNumber
+The pull request number read from githubRef.
+
+.PARAMETER apiBaseUrl
+The GitHub API base URL. Defaults to https://api.github.com.
+
+.PARAMETER graphQlUrl
+The GitHub GraphQL API URL. Defaults to https://api.github.com/graphql.
+
+.EXAMPLE
+$coverage = Get-MergeGroupReviewCoverage -githubRef $env:GITHUB_REF -owner 'owner' -repo 'repo' -pullNumber '120'
+Returns $null for a pull_request event, or for example @{ Status = 'NotCovered'; Message = 'Merge queue for ...' }.
+#>
+function Get-MergeGroupReviewCoverage {
+    param(
+        [string]$githubRef,
+        [string]$owner,
+        [string]$repo,
+        [string]$pullNumber,
+        [string]$apiBaseUrl = 'https://api.github.com',
+        [string]$graphQlUrl = 'https://api.github.com/graphql'
+    )
+
+    $baseBranch = Get-MergeGroupBaseBranchFromRef -githubRef $githubRef
+    if (-not $baseBranch) {
+        return $null
+    }
+
+    $groupingStrategy = Get-MergeQueueGroupingStrategy -owner $owner -repo $repo -branch $baseBranch -apiBaseUrl $apiBaseUrl -graphQlUrl $graphQlUrl
+    $setting = ($groupingStrategy.Source -ceq 'ruleset') ? 'Require all queue entries to pass required checks' : 'Only merge non-failing pull requests'
+    switch -CaseSensitive ($groupingStrategy.Strategy) {
+        'ALLGREEN' {
+            return [pscustomobject]@{
+                Status  = 'Covered'
+                Message = "Merge queue for '$baseBranch' has '$setting' turned on in its $($groupingStrategy.Source), so each pull request ahead of PR#$pullNumber in this merge group must pass its own merge group checks to merge."
+            }
+        }
+        'HEADGREEN' {
+            return [pscustomobject]@{
+                Status  = 'NotCovered'
+                Message = "Merge queue for '$baseBranch' has '$setting' turned off in its $($groupingStrategy.Source) (grouping strategy HEADGREEN), so a merge group merges all of its pull requests when the checks for the last one pass. This action only reviews that last pull request (PR#$pullNumber), so secrets in the pull requests ahead of it in the group could be merged. Turn on '$setting' for the merge queue of '$baseBranch'."
+            }
+        }
+    }
+    return [pscustomobject]@{
+        Status  = 'Unverified'
+        Message = "Could not verify that the merge queue for '$baseBranch' requires each pull request to pass its own required checks: $($groupingStrategy.Reason). This action only reviews PR#$pullNumber, the last pull request in this merge group. Keep 'Require all queue entries to pass required checks' (ruleset) or 'Only merge non-failing pull requests' (branch protection rule) turned on, so the pull requests ahead of it in the group are reviewed by their own merge group checks."
+    }
+}
+
+<#
+.SYNOPSIS
+Writes a notice message to the workflow log.
+
+.DESCRIPTION
+Returns the `notice` workflow command for the message, which GitHub Actions shows as a notice annotation.
+The vendored GitHubActions module does not provide a notice command. Like its Write-ActionWarning, the command is
+written to the success stream, so pipe it to Out-Host when the caller's output is captured.
+
+.PARAMETER Message
+The notice message. '%', carriage returns and line feeds are escaped.
+
+.EXAMPLE
+Write-ActionNotice -Message 'Merge queue settings could not be verified'
+Returns: '::notice::Merge queue settings could not be verified'
+
+.LINK
+https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#setting-a-notice-message
+#>
+function Write-ActionNotice {
+    param(
+        [string]$Message
+    )
+
+    return "::notice::$($Message -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A')"
+}
+
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PagedResult, Get-AlertLocationsUrl, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, ConvertTo-AlertStepOutputJson, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef, Get-MergeGroupBaseBranchFromRef, Get-MergeQueueGroupingStrategy, Get-MergeGroupReviewCoverage, Write-ActionNotice

@@ -20,6 +20,21 @@ GENERIC_SECRET_TYPES = "password,ec_private_key,generic_private_key,http_basic_a
 # Fall back to public github.com for local/manual runs outside a workflow.
 API_BASE_URL = os.environ.get('GITHUB_API_URL', 'https://api.github.com').rstrip('/')
 
+# GITHUB_GRAPHQL_URL is provided by the runner (https://api.github.com/graphql, https://api.<tenant>.ghe.com/graphql,
+# or https://<hostname>/api/graphql on GHES) and is only used to read merge queue settings for merge group runs.
+# Fall back to a URL derived from API_BASE_URL for local/manual runs outside a workflow.
+GRAPHQL_URL = os.environ.get('GITHUB_GRAPHQL_URL', '').strip().rstrip('/') or (
+    f"{API_BASE_URL[:-len('/api/v3')]}/api/graphql" if API_BASE_URL.endswith('/api/v3') else f"{API_BASE_URL}/graphql"
+)
+
+# Merge queue grouping strategies (ALLGREEN: each pull request in a merge group must pass its own required checks)
+MERGE_QUEUE_GROUPING_STRATEGIES = ('ALLGREEN', 'HEADGREEN')
+
+MERGE_QUEUE_SETTINGS_QUERY = (
+    'query($owner: String!, $repo: String!, $branch: String!) { repository(owner: $owner, name: $repo) '
+    '{ mergeQueue(branch: $branch) { configuration { mergingStrategy } } } }'
+)
+
 
 class EvaluationError(Exception):
     """Raised when a GitHub API call needed for a complete review fails.
@@ -535,6 +550,9 @@ def get_pull_request_number_from_ref(github_ref):
     Supports both the standard 'pull_request' event ref format
     (refs/pull/:prNumber/merge) and the 'merge_group' event ref format used by
     GitHub merge queues (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha).
+    Both formats are matched from the start of the ref (re.match) and are case-sensitive, as in the PowerShell
+    runtime, so a base branch name that contains 'refs/pull/<n>' does not change the result. The base branch name
+    can contain slashes: the pull request number is read from the last '/pr-<n>-' segment.
     Returns None if the ref does not match either format.
     """
     match = re.match(r'refs/pull/([0-9]+)', github_ref)
@@ -546,6 +564,167 @@ def get_pull_request_number_from_ref(github_ref):
         return match.group(1)
 
     return None
+
+def get_merge_group_base_branch_from_ref(github_ref):
+    """Extract the base branch of a merge queue merge group from the GITHUB_REF environment variable.
+
+    Expects the 'merge_group' event ref format used by GitHub merge queues
+    (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha). The base branch name can contain slashes: it ends
+    at the last '/pr-<n>-' segment, which get_pull_request_number_from_ref reads the pull request number from.
+    Returns None for any other ref, such as the 'pull_request' event ref (refs/pull/:prNumber/merge).
+    """
+    match = re.match(r'refs/heads/gh-readonly-queue/(.+)/pr-[0-9]+-', github_ref or '')
+    if match:
+        return match.group(1)
+    return None
+
+def get_merge_queue_grouping_strategy(github_token, repo_owner, repo_name, branch, http_proxy_url, https_proxy_url, verify_ssl):
+    """Return the grouping strategy of the merge queue for a branch.
+
+    Returns a dict with:
+      strategy: 'ALLGREEN' when each pull request in a merge group must pass its own required checks to merge
+        ('Require all queue entries to pass required checks' in a ruleset, 'Only merge non-failing pull requests'
+        in a branch protection rule), 'HEADGREEN' when that setting is off, or None when it could not be read.
+      source: 'ruleset' or 'branch protection rule', or None when strategy is None.
+      reason: why the setting could not be read, or None when strategy is set.
+
+    The merge queue rules of the active rulesets that apply to the branch are read first (REST API, get rules for a
+    branch), which only needs the metadata permission that every token has. When any of them turns the setting off,
+    the strategy is HEADGREEN.
+    A merge queue required by a branch protection rule is not listed there, so its setting is then read from the
+    GraphQL API (repository.mergeQueue). GraphQL only returns the setting when the token can read the merge queue
+    settings: for example, a classic token of a user with write access to the repository. Otherwise it returns no
+    configuration (or a FORBIDDEN error), which is reported as a reason rather than as an error.
+    Other API errors are raised as EvaluationError.
+    """
+    from urllib.parse import quote
+    headers = {
+        "Authorization": f"Bearer {github_token}",
+        "Accept": "application/vnd.github+json",
+    }
+    proxies = { "http": http_proxy_url, "https": https_proxy_url }
+
+    # API documentation: https://docs.github.com/en/rest/repos/rules?apiVersion=2022-11-28#get-rules-for-a-branch
+    rules = []
+    page = 1
+    while True:
+        response = None
+        try:
+            url = f"{API_BASE_URL}/repos/{repo_owner}/{repo_name}/rules/branches/{quote(branch, safe='')}?per_page=100&page={page}"
+            response = requests.get(url, headers=headers, proxies=proxies, verify=verify_ssl)
+            response.raise_for_status()
+            rules.extend(response.json())
+            if 'rel="next"' not in response.headers.get('Link', ''):
+                break
+            page += 1
+        except Exception as err:
+            status_code = _status_code(err, response)
+            raise EvaluationError(
+                f"Error reading the rulesets that apply to '{repo_owner}/{repo_name}' branch '{branch}', so its merge queue settings could not be verified. "
+                f"(StatusCode:{status_code} Message:{err})",
+                status_code
+            ) from err
+
+    merge_queue_rules = [rule for rule in rules if rule.get('type') == 'merge_queue']
+    if merge_queue_rules:
+        strategies = [(rule.get('parameters') or {}).get('grouping_strategy') or '' for rule in merge_queue_rules]
+        unknown_strategies = [strategy for strategy in strategies if strategy not in MERGE_QUEUE_GROUPING_STRATEGIES]
+        if 'HEADGREEN' in strategies:
+            return {'strategy': 'HEADGREEN', 'source': 'ruleset', 'reason': None}
+        if unknown_strategies:
+            return {'strategy': None, 'source': None, 'reason': f"unknown grouping strategy '{unknown_strategies[0]}'"}
+        return {'strategy': 'ALLGREEN', 'source': 'ruleset', 'reason': None}
+
+    # API documentation: https://docs.github.com/en/graphql/reference/objects#repository (mergeQueue field)
+    response = None
+    try:
+        response = requests.post(
+            GRAPHQL_URL,
+            headers=headers,
+            json={'query': MERGE_QUEUE_SETTINGS_QUERY, 'variables': {'owner': repo_owner, 'repo': repo_name, 'branch': branch}},
+            proxies=proxies,
+            verify=verify_ssl
+        )
+        response.raise_for_status()
+        body = response.json()
+        if not isinstance(body, dict):
+            raise ValueError("Unexpected GraphQL response")
+    except Exception as err:
+        status_code = _status_code(err, response)
+        raise EvaluationError(
+            f"Error reading the merge queue settings for '{repo_owner}/{repo_name}' branch '{branch}'. (StatusCode:{status_code} Message:{err})",
+            status_code
+        ) from err
+
+    merge_queue = ((body.get('data') or {}).get('repository') or {}).get('mergeQueue')
+    strategy = ((merge_queue or {}).get('configuration') or {}).get('mergingStrategy')
+    if strategy in MERGE_QUEUE_GROUPING_STRATEGIES:
+        return {'strategy': strategy, 'source': 'branch protection rule', 'reason': None}
+
+    errors = [error for error in (body.get('errors') or []) if error is not None]
+    if errors:
+        # A token that cannot read the repository's merge queue gets a FORBIDDEN (or NOT_FOUND) error
+        if all(error.get('type') in ('FORBIDDEN', 'NOT_FOUND') for error in errors):
+            return {'strategy': None, 'source': None, 'reason': f"the token cannot read its settings ({errors[0].get('message')})"}
+        raise EvaluationError(
+            f"Error reading the merge queue settings for '{repo_owner}/{repo_name}' branch '{branch}'. "
+            f"(GraphQL errors: {'; '.join(str(error.get('message')) for error in errors)})"
+        )
+    if merge_queue is None:
+        return {'strategy': None, 'source': None, 'reason': 'no merge queue was found for the branch'}
+    if merge_queue.get('configuration') is None:
+        # GraphQL returns no configuration, without an error, when the token cannot read the merge queue settings
+        return {'strategy': None, 'source': None, 'reason': 'the token cannot read its settings'}
+    return {'strategy': None, 'source': None, 'reason': f"unknown grouping strategy '{strategy or ''}'"}
+
+def get_merge_group_review_coverage(github_token, repo_owner, repo_name, github_ref, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl):
+    """Check whether reviewing the pull request named in a merge group ref covers the whole merge group.
+
+    A merge queue builds each merge group from the base branch and every pull request ahead of it in the queue, but
+    the merge group ref (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha) only names the last pull
+    request, which is the one the action reviews. That covers the group only when the merge queue requires each pull
+    request to pass its own required checks (grouping strategy ALLGREEN), because each pull request ahead of it was
+    then reviewed by its own merge group checks before it could merge.
+
+    Returns None, without an API call, when github_ref is not a merge group ref (for example, a pull_request event).
+    Otherwise reads the merge queue setting with get_merge_queue_grouping_strategy and returns a dict with:
+      status: 'covered' (ALLGREEN), 'not_covered' (HEADGREEN), or 'unverified' (the setting could not be read)
+      message: the message to report, which explains the setting and how to turn it on when it is off
+    API errors are raised as EvaluationError (see get_merge_queue_grouping_strategy).
+    """
+    base_branch = get_merge_group_base_branch_from_ref(github_ref)
+    if not base_branch:
+        return None
+
+    grouping = get_merge_queue_grouping_strategy(github_token, repo_owner, repo_name, base_branch, http_proxy_url, https_proxy_url, verify_ssl)
+    setting = 'Require all queue entries to pass required checks' if grouping['source'] == 'ruleset' else 'Only merge non-failing pull requests'
+    if grouping['strategy'] == 'ALLGREEN':
+        return {
+            'status': 'covered',
+            'message': (
+                f"Merge queue for '{base_branch}' has '{setting}' turned on in its {grouping['source']}, so each pull request "
+                f"ahead of PR#{pull_request_number} in this merge group must pass its own merge group checks to merge."
+            ),
+        }
+    if grouping['strategy'] == 'HEADGREEN':
+        return {
+            'status': 'not_covered',
+            'message': (
+                f"Merge queue for '{base_branch}' has '{setting}' turned off in its {grouping['source']} (grouping strategy HEADGREEN), "
+                f"so a merge group merges all of its pull requests when the checks for the last one pass. This action only reviews "
+                f"that last pull request (PR#{pull_request_number}), so secrets in the pull requests ahead of it in the group could be "
+                f"merged. Turn on '{setting}' for the merge queue of '{base_branch}'."
+            ),
+        }
+    return {
+        'status': 'unverified',
+        'message': (
+            f"Could not verify that the merge queue for '{base_branch}' requires each pull request to pass its own required checks: "
+            f"{grouping['reason']}. This action only reviews PR#{pull_request_number}, the last pull request in this merge group. "
+            f"Keep 'Require all queue entries to pass required checks' (ruleset) or 'Only merge non-failing pull requests' "
+            f"(branch protection rule) turned on, so the pull requests ahead of it in the group are reviewed by their own merge group checks."
+        ),
+    }
 
 def get_alert_location_type(alert_location):
     if 'type' not in alert_location:
@@ -607,6 +786,24 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         # A required lookup failed: fail the workflow (fail-closed) or end the review as incomplete
         handle_evaluation_error(err, fail_closed, evaluation_warnings)
         complete_incomplete_review(pull_request_number, pull_request, evaluation_warnings, disable_workflow_summary)
+
+    # Merge queues: a merge group contains the base branch and every pull request ahead of it in the queue, but its ref
+    # only names the last pull request, which is the one reviewed. That covers the group only when the merge queue
+    # requires each pull request to pass its own required checks (grouping strategy ALLGREEN). When it does not
+    # (HEADGREEN), the review cannot be completed. When the setting cannot be read with the token, a notice is written
+    # and the review continues. No API call is made for pull_request events.
+    try:
+        merge_group_coverage = get_merge_group_review_coverage(github_token, repo_owner, repo_name, github_ref, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
+    except EvaluationError as err:
+        merge_group_coverage = None
+        handle_evaluation_error(err, fail_closed, evaluation_warnings)
+    if merge_group_coverage is not None:
+        if merge_group_coverage['status'] == 'not_covered':
+            fatal_error(EvaluationError(merge_group_coverage['message']))
+        elif merge_group_coverage['status'] == 'unverified':
+            print(f"::notice::{escape_command_data(merge_group_coverage['message'])}")
+        else:
+            logging.info(merge_group_coverage['message'])
 
     # Get the pull request information:
     logging.debug("Getting the pull request information.")
@@ -932,7 +1129,7 @@ if __name__ == "__main__":
     parser.add_argument("--VerifySSL", type=str2bool, required=False, help="Verify SSL")
     parser.add_argument("--SkipClosedAlerts", type=str2bool, required=False, help="Skip closed alerts")
     parser.add_argument("--DisableWorkflowSummary", type=str2bool, required=False, help="Disable workflow summary")
-    parser.add_argument("--FailClosed", type=str2bool, required=False, default=True, help="Fail the workflow when a GitHub API error prevents a complete review (default: true). When false, errors are reported as warnings.")
+    parser.add_argument("--FailClosed", type=str2bool, required=False, default=True, help="Fail the workflow when a GitHub API error, or a merge queue that does not require each pull request to pass its own required checks, prevents a complete review (default: true). When false, these are reported as warnings.")
 
     args = parser.parse_args()
 
