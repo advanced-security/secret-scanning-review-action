@@ -3,24 +3,32 @@ author: "@felickz"
 description: 'Increase the visibility of Secret Scanning alerts as part of pull request collaboration'
 inputs:
   token:
-    description: 'GitHub Access Token that provides access to the repository. Must be provided via either parameter or environment variable. The github.token cannot be used as it does not provide secret scanning alert access.'
-    required: false #TODO: make this required once the feature is GA (breaking change vs initial env var approach)
+    description: 'GitHub access token with access to the secret scanning alerts of the repository (see the token requirements in the README). The github.token cannot be used as it does not provide secret scanning alert access.'
+    required: true
   fail-on-alert:
-    description: 'A boolean to raise workflow/annotation error(instead of warning) if alert is detected.'
+    description: 'A boolean to raise workflow/annotation errors (instead of warnings) and fail the workflow if an alert is detected.'
     required: false
     default: 'false'
   fail-on-alert-exclude-closed:
-    description: "A boolean to exclude an alert from FailOnAlert if it is marked as closed (state: 'resolved')."
-    required: false
-    default: 'false'
-  disable-pr-comment:
-    description: 'A boolean to disable the PR comment feature.'
+    description: "A boolean to exclude an alert from fail-on-alert if it is marked as closed (state: 'resolved')."
     required: false
     default: 'false'
   fail-closed:
     description: 'A boolean that controls how GitHub API errors are handled. When true (default), any API error that prevents a complete review fails the workflow, as does a merge queue that does not require each pull request to pass its own required checks (merge_group events). When false, API errors are reported as warnings and the review continues with partial results (or is skipped) without failing the workflow. Detected alerts still honor fail-on-alert either way.'
     required: false
     default: 'true'
+  skip-closed-alerts:
+    description: 'A boolean to enable or disable skipping closed alerts from evaluation.'
+    required: false
+    default: 'false'
+  disable-pr-comment:
+    description: 'A boolean to disable the PR comment feature.'
+    required: false
+    default: 'false'
+  disable-workflow-summary:
+    description: 'A boolean to disable the workflow summary.'
+    required: false
+    default: 'false'
   runtime:
     description: 'The runtime to use for the action (`powershell` or `python`).'
     required: false
@@ -37,37 +45,13 @@ inputs:
     description: 'A boolean to enable or disable SSL verification for GitHub API requests (python runtime only). NOTE: This is NOT recommended and may introduce additional security risks.'
     required: false
     default: 'true'
-  skip-closed-alerts:
-    description: 'A boolean to enable or disable skipping closed alerts from evaluation.'
-    required: false
-    default: 'false'
-  python-skip-closed-alerts:
-    description: '[DEPRECATED - Use skip-closed-alerts instead] A boolean to enable or disable skipping closed alerts from evaluation (python runtime only).'
-    required: false
-    default: 'false'
-  disable-workflow-summary:
-    description: 'A boolean to disable the workflow summary comment.'
-    required: false
-    default: 'false'
-  python-disable-workflow-summary:
-    description: '[DEPRECATED - Use disable-workflow-summary instead] A boolean to disable the workflow summary comment (python runtime only).'
-    required: false
-    default: 'false'
 outputs:
   alerts:
-    description: 'Details about the alerts detected in the PR.'
+    description: 'JSON array with details about the alerts detected in the PR.'
     value: ${{ steps.python-run.outputs.alerts || steps.powershell-run.outputs.alerts }}
 runs:
     using: composite
     steps:
-      - name: Warn on deprecated python-skip-closed-alerts
-        if: ${{ inputs.python-skip-closed-alerts == 'true' }}
-        run: echo "::warning::The 'python-skip-closed-alerts' input is deprecated and will be removed in v3. Please use 'skip-closed-alerts' instead."
-        shell: bash
-      - name: Warn on deprecated python-disable-workflow-summary
-        if: ${{ inputs.python-disable-workflow-summary == 'true' }}
-        run: echo "::warning::The 'python-disable-workflow-summary' input is deprecated and will be removed in v3. Please use 'disable-workflow-summary' instead."
-        shell: bash
       - name: Run Powershell Script
         if: ${{ inputs.runtime == 'powershell' }}
         id: powershell-run
@@ -88,7 +72,7 @@ runs:
           INPUT_FAIL_ON_ALERT_EXCLUDE_CLOSED: ${{ inputs.fail-on-alert-exclude-closed }}
           INPUT_DISABLE_PR_COMMENT: ${{ inputs.disable-pr-comment }}
           INPUT_DISABLE_WORKFLOW_SUMMARY: ${{ inputs.disable-workflow-summary }}
-          INPUT_SKIP_CLOSED_ALERTS: ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
+          INPUT_SKIP_CLOSED_ALERTS: ${{ inputs.skip-closed-alerts }}
           INPUT_FAIL_CLOSED: ${{ inputs.fail-closed }}
       - name: Run Python Script
         if: ${{ inputs.runtime == 'python' }}
@@ -115,8 +99,8 @@ runs:
           INPUT_PROXY_HTTP: ${{ inputs.python-http-proxy-url }}
           INPUT_PROXY_HTTPS: ${{ inputs.python-https-proxy-url }}
           INPUT_VERIFY_SSL: ${{ inputs.python-verify-ssl }}
-          INPUT_SKIP_CLOSED_ALERTS: ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
-          INPUT_DISABLE_WORKFLOW_SUMMARY: ${{ inputs.disable-workflow-summary || inputs.python-disable-workflow-summary }}
+          INPUT_SKIP_CLOSED_ALERTS: ${{ inputs.skip-closed-alerts }}
+          INPUT_DISABLE_WORKFLOW_SUMMARY: ${{ inputs.disable-workflow-summary }}
           INPUT_FAIL_CLOSED: ${{ inputs.fail-closed }}
           # Use UTF-8 for file I/O and stdout on every OS (Python on Windows otherwise defaults to cp1252, which cannot encode the summary emoji)
           PYTHONUTF8: '1'

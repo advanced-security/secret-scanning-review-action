@@ -20,7 +20,7 @@
 ##                                                                                           ##
 ##  The purpose of this workflow is to:                                                      ##
 ##    1. Test error handling when insufficient permissions are provided                      ##
-##    2. Verify debug output shows token scopes correctly                                    ##
+##    2. Verify the error output points to the token requirements                            ##
 ##    3. Ensure the action fails gracefully with helpful error messages                      ##
 ##                                                                                           ##
 ##  CORRECT USAGE requires a PAT or GitHub App token with:                                   ##
@@ -129,7 +129,6 @@ jobs:
         with:
           # ⚠️ BAD: Using a classic PAT that has some scopes but NOT 'repo' scope!
           # Classic PATs need 'repo' scope for secret scanning access.
-          # This test verifies the OAuth scopes are displayed in the error output.
           token: ${{ secrets.SSRA_GITHUB_PAT_CLASSIC_NO_SECRET_PERMISSIONS }}
 
           fail-on-alert: false  # Doesn't matter - will fail before this is evaluated

@@ -7,7 +7,6 @@ import argparse
 import re
 import sys
 import json
-import subprocess
 from datetime import datetime, timezone
 
 # List of supported generic secret types as per:
@@ -1133,8 +1132,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Normalize proxy URLs: treat '""' (legacy default) and empty strings as None
-    proxy_http = args.ProxyURLHTTP if args.ProxyURLHTTP and args.ProxyURLHTTP.strip('"') else None
-    proxy_https = args.ProxyURLHTTPS if args.ProxyURLHTTPS and args.ProxyURLHTTPS.strip('"') else None
+    # An empty proxy URL (the input default) means no proxy
+    proxy_http = args.ProxyURLHTTP or None
+    proxy_https = args.ProxyURLHTTPS or None
 
     main(args.GitHubToken, args.FailOnAlert, args.FailOnAlertExcludeClosed, args.DisablePRComment, proxy_http, proxy_https, args.VerifySSL, args.SkipClosedAlerts, args.DisableWorkflowSummary, args.FailClosed)

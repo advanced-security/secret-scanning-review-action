@@ -841,7 +841,7 @@ Describe 'Get-DismissalRequestForAlert' {
     }
 
     It 'Returns null when API returns error response body instead of throwing' {
-        # Invoke-GHRestMethod does not throw on HTTP errors; it returns the error body as a PSObject
+        # A response with a 'message' property is an error body, not a dismissal request
         $errorResponse = @{ message = 'Resource not accessible by personal access token'; documentation_url = 'https://docs.github.com'; status = '403' }
         Mock Invoke-GHRestMethod { return $errorResponse } -ModuleName ActionHelpers
 

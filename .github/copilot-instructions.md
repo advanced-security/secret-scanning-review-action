@@ -58,7 +58,7 @@ When adding new features or inputs:
 ### Deprecating an Input
 1. Keep the old input in `action.yml` for backward compatibility
 2. Update description to `[DEPRECATED - Use <new-input> instead]`
-3. In action step commands, use fallback logic: `${{ inputs.new-input || inputs.old-input }}`
+3. In the step `env:` blocks, use fallback logic: `${{ inputs.new-input || inputs.old-input }}`
 4. Document deprecation in `README.md`
 5. Do NOT remove the deprecated input without a major version bump
 
@@ -79,8 +79,9 @@ When adding new features or inputs:
 
 ### action.yml
 - Maintain alphabetical or logical grouping of inputs
-- Use double-dollar for PowerShell boolean conversion: `$${{ inputs.param }}`
-- Use single-dollar for Python: `${{ inputs.param }}`
+- Never use `${{ inputs.* }}` expressions inside `run:`; pass each input to the runtime steps through their `env:` block (for example `INPUT_FAIL_ON_ALERT: ${{ inputs.fail-on-alert }}`)
+- PowerShell converts booleans in the call: `-FailOnAlert ($env:INPUT_FAIL_ON_ALERT -eq 'true')`
+- Python receives the quoted variable and parses it with `str2bool`: `--FailOnAlert "$INPUT_FAIL_ON_ALERT"`
 
 ## Review Checklist
 Before submitting changes:
