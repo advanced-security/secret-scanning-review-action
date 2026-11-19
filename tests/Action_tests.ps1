@@ -698,6 +698,54 @@ Describe 'Get-EvaluationWarningMarkdown' {
     }
 }
 
+Describe 'ConvertTo-AlertStepOutputJson' {
+    BeforeAll {
+        function Get-FakeAlert {
+            param(
+                [int]$number,
+                $bypassedBy = $null
+            )
+            [PSCustomObject]@{
+                number                      = $number
+                secret_type                 = 'github_personal_access_token'
+                push_protection_bypassed    = $null -ne $bypassedBy
+                push_protection_bypassed_by = $bypassedBy
+                state                       = 'open'
+                resolution                  = $null
+                validity                    = 'active'
+                validity_checked_at         = $null
+                html_url                    = "https://github.com/owner/repo/security/secret-scanning/$number"
+                dismissal_request_status    = $null
+            }
+        }
+    }
+
+    It 'Returns a JSON array with one item per alert (<alertCount> alerts)' -ForEach @(
+        @{ alertCount = 0 }
+        @{ alertCount = 1 }
+        @{ alertCount = 2 }
+    ) {
+        $alerts = @(1, 2 | Select-Object -First $alertCount | ForEach-Object { Get-FakeAlert -number $_ })
+
+        $json = ConvertTo-AlertStepOutputJson -alerts $alerts
+
+        $json | Should -Match '^\[.*\]$'
+        (ConvertFrom-Json -InputObject $json -NoEnumerate).Count | Should -Be $alertCount
+    }
+
+    It 'Keeps the nested push_protection_bypassed_by user object' {
+        $user = '{"login":"octocat","id":1,"type":"User","site_admin":false}' | ConvertFrom-Json
+
+        $json = ConvertTo-AlertStepOutputJson -alerts @(Get-FakeAlert -number 7 -bypassedBy $user)
+
+        $alert = (ConvertFrom-Json -InputObject $json -NoEnumerate)[0]
+        $alert.number | Should -Be 7
+        $alert.push_protection_bypassed | Should -BeTrue
+        $alert.push_protection_bypassed_by.login | Should -Be 'octocat'
+        $alert.push_protection_bypassed_by.id | Should -Be 1
+    }
+}
+
 Describe 'Write-AlertAnnotation' {
     It 'Does nothing for non-commit alert types' {
         Mock Write-ActionError { } -ModuleName ActionHelpers

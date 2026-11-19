@@ -828,6 +828,52 @@ function Get-EvaluationWarningMarkdown {
 
 <#
 .SYNOPSIS
+Builds the JSON for the alerts step output.
+
+.DESCRIPTION
+Returns a compressed JSON array with the metadata of each alert: number, secret_type, push_protection_bypassed,
+push_protection_bypassed_by, state, resolution, validity, validity_checked_at, html_url and dismissal_request_status.
+The result is always a JSON array, as documented in the README and written by the Python runtime: '[]' when there
+are no alerts, and a one-item array when there is one alert.
+
+.PARAMETER alerts
+The secret scanning alerts that originated from the pull request.
+
+.EXAMPLE
+ConvertTo-AlertStepOutputJson -alerts @()
+Returns: '[]'
+
+.EXAMPLE
+Add-Content -Path $env:GITHUB_OUTPUT -Value "alerts=$(ConvertTo-AlertStepOutputJson -alerts $alertsInitiatedFromPr)"
+#>
+function ConvertTo-AlertStepOutputJson {
+    param(
+        [object[]]$alerts
+    )
+
+    $stepOutput = [System.Collections.Generic.List[object]]::new()
+    foreach ($alert in $alerts) {
+        $stepOutput.Add(@{
+            number                      = $alert.number
+            secret_type                 = $alert.secret_type
+            push_protection_bypassed    = $alert.push_protection_bypassed
+            push_protection_bypassed_by = $alert.push_protection_bypassed_by
+            state                       = $alert.state
+            resolution                  = $alert.resolution
+            validity                    = $alert.validity
+            validity_checked_at         = $alert.validity_checked_at
+            html_url                    = $alert.html_url
+            dismissal_request_status    = $alert.dismissal_request_status
+        })
+    }
+
+    # Pass the list with -InputObject: piping it unrolls the list, so 0 alerts would write nothing and 1 alert a bare object.
+    # Depth 3 keeps the nested push_protection_bypassed_by user object (array > alert > user > user fields).
+    return ConvertTo-Json -InputObject $stepOutput.ToArray() -Compress -Depth 3
+}
+
+<#
+.SYNOPSIS
 Writes an alert annotation for commit-type locations.
 
 .DESCRIPTION
@@ -1024,4 +1070,4 @@ function Get-PullRequestNumberFromRef {
     return $null
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PagedResult, Get-AlertLocationsUrl, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PagedResult, Get-AlertLocationsUrl, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, ConvertTo-AlertStepOutputJson, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef
