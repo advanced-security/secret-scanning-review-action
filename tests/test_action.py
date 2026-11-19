@@ -377,6 +377,34 @@ class TestGetPullRequestReviewComment:
         assert exc.value.status_code == 404
 
 
+class TestGetPullRequestNumberFromReviewCommentHtmlUrl:
+    """Tests for get_pull_request_number_from_review_comment_html_url."""
+
+    @pytest.mark.parametrize("html_url,expected", [
+        ("https://github.com/owner/repo/pull/4#discussion_r4606065507", 4),
+        ("https://github.com/Owner/REPO/pull/12#discussion_r1", 12),
+        ("https://tenant.ghe.com/owner/repo/pull/7#discussion_r2", 7),
+    ])
+    def test_returns_pull_request_number(self, html_url, expected):
+        assert action.get_pull_request_number_from_review_comment_html_url(html_url, "owner", "repo") == expected
+
+    @pytest.mark.parametrize("html_url", [
+        None,
+        "",
+        "https://github.com/other/repo/pull/4#discussion_r1",
+        "https://github.com/owner/other/pull/4#discussion_r1",
+        "https://github.com/owner/repo/pull/4",
+        "https://github.com/owner/repo/pull/4#issuecomment-1",
+        "https://github.com/owner/repo/pulls/4#discussion_r1",
+        "https://github.com/owner/repo/pull/4/files#discussion_r1",
+        "https://github.com/owner/repo/pull/abc#discussion_r1",
+        "https://github.com/owner/repo/pull/4#discussion_r1\n",
+        "/owner/repo/pull/4#discussion_r1",
+    ])
+    def test_returns_none_for_missing_malformed_or_other_repository(self, html_url):
+        assert action.get_pull_request_number_from_review_comment_html_url(html_url, "owner", "repo") is None
+
+
 PR_API_URL = "https://api.github.com/repos/owner/repo/pulls/1"
 REVIEW_COMMENT_URL = "https://api.github.com/repos/owner/repo/pulls/comments/99"
 
@@ -495,6 +523,50 @@ class TestMainFailClosed:
 
         assert self._run(True, fail_on_alert=True) == 1
 
+    @pytest.mark.parametrize("fail_closed", [True, False])
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_pull_request_review_comment")
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_review_comment_html_url_for_this_pr_is_matched_without_api_call(self, mock_pr, _shas, mock_alerts, mock_locations, mock_review, _dismissal, fail_closed, env):
+        """A pending or deleted review comment (404) on this PR is matched by its html_url, whatever fail-closed is."""
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [{"type": "pull_request_review_comment", "details": {
+            "pull_request_review_comment_url": REVIEW_COMMENT_URL,
+            "html_url": "https://github.com/owner/repo/pull/1#discussion_r99",
+        }}]
+        mock_review.side_effect = action.EvaluationError("Not Found", 404)
+
+        assert self._run(fail_closed, fail_on_alert=True) == 1
+        mock_review.assert_not_called()
+
+    @pytest.mark.parametrize("fail_closed", [True, False])
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_pull_request_review_comment")
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_review_comment_html_url_for_other_pr_is_not_matched_without_api_call(self, mock_pr, _shas, mock_alerts, mock_locations, mock_review, _dismissal, fail_closed, env):
+        """A pending or deleted review comment (404) on another PR is not matched or reported as a warning, whatever fail-closed is."""
+        summary, output = env
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [{"type": "pull_request_review_comment", "details": {
+            "pull_request_review_comment_url": REVIEW_COMMENT_URL,
+            "html_url": "https://github.com/owner/repo/pull/4#discussion_r99",
+        }}]
+        mock_review.side_effect = action.EvaluationError("Not Found", 404)
+
+        assert self._run(fail_closed, fail_on_alert=True) == 0
+        assert "alerts=[]" in output.read_text()
+        assert "could not be fully completed" not in summary.read_text(encoding="utf-8")
+        mock_review.assert_not_called()
+
+    @pytest.mark.parametrize("html_url", [None, "https://github.com/owner/repo/pull/1"])
     @pytest.mark.parametrize("fail_closed,expected_exit", [(True, 1), (False, 0)])
     @patch("action.get_dismissal_request_for_alert", return_value=None)
     @patch("action.get_pull_request_review_comment")
@@ -502,14 +574,18 @@ class TestMainFailClosed:
     @patch("action.get_secret_scanning_alerts_for_repo")
     @patch("action.get_commit_shas_for_pr", return_value=["abc"])
     @patch("action.get_pull_request")
-    def test_inaccessible_review_comment(self, mock_pr, _shas, mock_alerts, mock_locations, mock_review, _dismissal, fail_closed, expected_exit, env):
-        """A 404 review comment (pending or deleted) counts as a match only when fail-closed is enabled."""
+    def test_inaccessible_review_comment(self, mock_pr, _shas, mock_alerts, mock_locations, mock_review, _dismissal, fail_closed, expected_exit, html_url, env):
+        """Without a usable html_url, a 404 review comment (pending or deleted) counts as a match only when fail-closed is enabled."""
         mock_pr.return_value = self._pr()
         mock_alerts.side_effect = [[_alert()], []]
-        mock_locations.return_value = [{"type": "pull_request_review_comment", "details": {"pull_request_review_comment_url": REVIEW_COMMENT_URL}}]
+        details = {"pull_request_review_comment_url": REVIEW_COMMENT_URL}
+        if html_url is not None:
+            details["html_url"] = html_url
+        mock_locations.return_value = [{"type": "pull_request_review_comment", "details": details}]
         mock_review.side_effect = action.EvaluationError("Not Found", 404)
 
         assert self._run(fail_closed, fail_on_alert=True) == expected_exit
+        mock_review.assert_called_once()
 
     @patch("action.get_dismissal_request_for_alert", return_value=None)
     @patch("action.get_locations_for_alert")

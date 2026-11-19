@@ -324,6 +324,96 @@ Describe 'Get-PullRequestReviewComment' {
     }
 }
 
+Describe 'Get-PullRequestNumberFromReviewCommentHtmlUrl' {
+    It 'Returns the pull request number from <htmlUrl>' -TestCases @(
+        @{ htmlUrl = 'https://github.com/owner/repo/pull/4#discussion_r4606065507'; expected = 4 }
+        @{ htmlUrl = 'https://github.com/Owner/REPO/pull/12#discussion_r1'; expected = 12 }
+        @{ htmlUrl = 'https://tenant.ghe.com/owner/repo/pull/7#discussion_r2'; expected = 7 }
+    ) {
+        param($htmlUrl, $expected)
+        Get-PullRequestNumberFromReviewCommentHtmlUrl -htmlUrl $htmlUrl -owner 'owner' -repo 'repo' | Should -Be $expected
+    }
+
+    It 'Returns null when html_url is <case>' -TestCases @(
+        @{ case = 'missing'; htmlUrl = $null }
+        @{ case = 'empty'; htmlUrl = '' }
+        @{ case = 'for another owner'; htmlUrl = 'https://github.com/other/repo/pull/4#discussion_r1' }
+        @{ case = 'for another repository'; htmlUrl = 'https://github.com/owner/other/pull/4#discussion_r1' }
+        @{ case = 'without a fragment'; htmlUrl = 'https://github.com/owner/repo/pull/4' }
+        @{ case = 'an issue comment fragment'; htmlUrl = 'https://github.com/owner/repo/pull/4#issuecomment-1' }
+        @{ case = 'a pulls path'; htmlUrl = 'https://github.com/owner/repo/pulls/4#discussion_r1' }
+        @{ case = 'a path with extra segments'; htmlUrl = 'https://github.com/owner/repo/pull/4/files#discussion_r1' }
+        @{ case = 'a non-numeric pull request number'; htmlUrl = 'https://github.com/owner/repo/pull/abc#discussion_r1' }
+        @{ case = 'followed by a newline'; htmlUrl = "https://github.com/owner/repo/pull/4#discussion_r1`n" }
+        @{ case = 'relative'; htmlUrl = '/owner/repo/pull/4#discussion_r1' }
+    ) {
+        param($htmlUrl)
+        Get-PullRequestNumberFromReviewCommentHtmlUrl -htmlUrl $htmlUrl -owner 'owner' -repo 'repo' | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Test-ReviewCommentInPullRequest' {
+    BeforeAll {
+        # Pull request #1 in owner/repo
+        $script:pullRequestArgs = @{
+            owner              = 'owner'
+            repo               = 'repo'
+            pullNumber         = 1
+            pullRequestApiUrl  = 'https://api.github.com/repos/owner/repo/pulls/1'
+            expectedApiBaseUrl = 'https://api.github.com'
+        }
+    }
+
+    It 'Matches an html_url for this pull request without an API call' {
+        # A pending or deleted review comment returns 404 from the API
+        Mock Invoke-GHRestMethod { throw 'Not Found' } -ModuleName ActionHelpers
+        $location = @{ type = 'pull_request_review_comment'; details = @{
+                pull_request_review_comment_url = 'https://api.github.com/repos/owner/repo/pulls/comments/99'
+                html_url                        = 'https://github.com/owner/repo/pull/1#discussion_r99'
+            }
+        }
+
+        Test-ReviewCommentInPullRequest -location $location @script:pullRequestArgs | Should -BeTrue
+        Should -Invoke Invoke-GHRestMethod -Times 0 -Exactly -ModuleName ActionHelpers
+    }
+
+    It 'Does not match an html_url for another pull request and makes no API call' {
+        Mock Invoke-GHRestMethod { throw 'Not Found' } -ModuleName ActionHelpers
+        $location = @{ type = 'pull_request_review_comment'; details = @{
+                pull_request_review_comment_url = 'https://api.github.com/repos/owner/repo/pulls/comments/99'
+                html_url                        = 'https://github.com/owner/repo/pull/4#discussion_r99'
+            }
+        }
+
+        Test-ReviewCommentInPullRequest -location $location @script:pullRequestArgs | Should -BeFalse
+        Should -Invoke Invoke-GHRestMethod -Times 0 -Exactly -ModuleName ActionHelpers
+    }
+
+    It 'Falls back to the review comment API when html_url is <case>' -TestCases @(
+        @{ case = 'missing'; details = @{ pull_request_review_comment_url = 'https://api.github.com/repos/owner/repo/pulls/comments/99' } }
+        @{ case = 'malformed'; details = @{ pull_request_review_comment_url = 'https://api.github.com/repos/owner/repo/pulls/comments/99'; html_url = 'https://github.com/owner/repo/pull/1' } }
+    ) {
+        param($details)
+        Mock Invoke-GHRestMethod { return @{ pull_request_url = 'https://api.github.com/repos/owner/repo/pulls/1' } } -ModuleName ActionHelpers
+        $location = @{ type = 'pull_request_review_comment'; details = $details }
+
+        Test-ReviewCommentInPullRequest -location $location @script:pullRequestArgs | Should -BeTrue
+        Should -Invoke Invoke-GHRestMethod -Times 1 -Exactly -ModuleName ActionHelpers -ParameterFilter {
+            $Uri -eq 'https://api.github.com/repos/owner/repo/pulls/comments/99'
+        }
+    }
+
+    It 'Propagates a fallback lookup error (such as 404) so the caller applies fail-closed' {
+        Mock Invoke-GHRestMethod { throw 'Not Found' } -ModuleName ActionHelpers
+        $location = @{ type = 'pull_request_review_comment'; details = @{
+                pull_request_review_comment_url = 'https://api.github.com/repos/owner/repo/pulls/comments/99'
+            }
+        }
+
+        { Test-ReviewCommentInPullRequest -location $location @script:pullRequestArgs } | Should -Throw '*Not Found*'
+    }
+}
+
 Describe 'Get-PullRequestCommitSha' {
     It 'Follows nextLink pagination on the pull request commits endpoint' {
         Mock Invoke-GHRestMethod {
