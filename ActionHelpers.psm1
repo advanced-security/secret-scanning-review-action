@@ -150,6 +150,9 @@ Generates a markdown hyperlink for an alert location.
 .DESCRIPTION
 Creates a markdown link to the specific location where a secret was detected.
 Handles various location types including commits, PR titles, comments, and reviews.
+Pull request review comments link to the location's html_url, without an API call. When html_url is missing
+(for example, on older GitHub Enterprise Server versions), the link is built on the GitHub instance the workflow
+runs on (GITHUB_SERVER_URL, defaulting to https://github.com).
 
 .PARAMETER location
 The location object containing type and details of where the secret was found.
@@ -159,6 +162,10 @@ The HTML URL of the pull request.
 
 .PARAMETER pullRequestNumber
 The pull request number.
+
+.PARAMETER expectedApiBaseUrl
+The expected GitHub API base URL (e.g., https://api.github.com), used to validate the location API URLs
+before sending an authenticated request for their html_url.
 
 .EXAMPLE
 Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42
@@ -212,23 +219,16 @@ function Get-AlertLocationWithLink {
             return $locationType
         }
         'pull_request_review_comment' {
-            $htmlUrl = Get-PullRequestHtmlUrl -apiUrl $location.details.pull_request_review_comment_url -expectedApiBaseUrl $expectedApiBaseUrl
-            if ($htmlUrl) {
-                # API call succeeded - use the html_url from the response
-                return "[$locationType]($htmlUrl)"
+            # Prefer the location's html_url: it needs no API call and is also provided for pending or deleted review comments
+            if ($location.details.html_url) {
+                return "[$locationType]($($location.details.html_url))"
             }
 
-            # If we reach here, $htmlUrl is null (API call failed, likely 404 for pending/deleted review comment)
-            # Fallback: manually construct the GitHub URL from the comment ID
-            if ($location.details.pull_request_review_comment_url) {
-                $commentId = Get-IdFromUrl -url $location.details.pull_request_review_comment_url
-                $uri = [uri]$location.details.pull_request_review_comment_url
-                $pathSegments = $uri.AbsolutePath -split '/'
-                # Extract repo path: /repos/owner/repo/pulls/comments/12345 -> owner/repo
-                $owner = $pathSegments[2]
-                $repo = $pathSegments[3]
-                $constructedUrl = "https://github.com/$owner/$repo/pull/$pullRequestNumber#discussion_r$commentId"
-                return "[$locationType]($constructedUrl)"
+            # Without html_url, build the link on the GitHub instance the workflow runs on from the review comment API URL:
+            # <API base URL>/repos/{owner}/{repo}/pulls/comments/{id} -> <server URL>/{owner}/{repo}/pull/{pull number}#discussion_r{id}
+            if ($location.details.pull_request_review_comment_url -match '/repos/(?<owner>[^/]+)/(?<repo>[^/]+)/pulls/comments/(?<id>[0-9]+)/?$') {
+                $serverUrl = if ([String]::IsNullOrWhiteSpace($env:GITHUB_SERVER_URL)) { 'https://github.com' } else { $env:GITHUB_SERVER_URL.TrimEnd('/') }
+                return "[$locationType]($serverUrl/$($matches.owner)/$($matches.repo)/pull/$pullRequestNumber#discussion_r$($matches.id))"
             }
 
             return $locationType
@@ -282,7 +282,8 @@ function Get-PullRequestComment {
 
     while ($true) {
         try {
-            $comments = @(Invoke-GHRestMethod -Method GET -Uri $commentUrl)
+            # Invoke-GHRestMethod returns $null for an empty page, so skip $null entries
+            $comments = @(Invoke-GHRestMethod -Method GET -Uri $commentUrl | Where-Object { $null -ne $_ })
         }
         catch {
             $_.Exception.Data['PartialResult'] = $allComments
@@ -297,6 +298,79 @@ function Get-PullRequestComment {
         $commentUrl = "$baseUrl/repos/$owner/$repo/issues/$pullNumber/comments?per_page=$perPage&page=$page"
     }
     return $allComments
+}
+
+<#
+.SYNOPSIS
+Creates or updates the action's summary comment on a pull request.
+
+.DESCRIPTION
+Lists the pull request comments (see Get-PullRequestComment) and updates the first comment that contains the
+action's watermark with the markdown summary. When there is no such comment, a new comment is created, unless
+createIfMissing is $false. The caller passes $false when no alerts were found, so a summary comment from an
+earlier run is corrected, but no new comment is added.
+Returns the created or updated comment, or $null when no comment was written.
+Errors are thrown with a message that describes the failed request, so the caller can decide (via the
+fail-closed setting) whether the error fails the review or is reported as a warning.
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER pullNumber
+The pull request number.
+
+.PARAMETER markdownSummary
+The markdown summary to write. The watermark and a timestamp are added to the comment.
+
+.PARAMETER createIfMissing
+Whether to create a comment when the pull request has no summary comment yet. Defaults to $true.
+
+.PARAMETER apiBaseUrl
+The GitHub API base URL (e.g., https://api.github.com or https://api.<tenant>.ghe.com).
+Defaults to https://api.github.com.
+
+.EXAMPLE
+Publish-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 -markdownSummary $markdownSummary -createIfMissing $false
+Updates the summary comment on pull request #42 from an earlier run, and returns $null when there is none.
+#>
+function Publish-PullRequestComment {
+    param(
+        [string]$owner,
+        [string]$repo,
+        [int]$pullNumber,
+        [string]$markdownSummary,
+        [bool]$createIfMissing = $true,
+        [string]$apiBaseUrl = 'https://api.github.com'
+    )
+
+    try {
+        $comments = @(Get-PullRequestComment -owner $owner -repo $repo -pullNumber $pullNumber -apiBaseUrl $apiBaseUrl)
+    }
+    catch {
+        throw "Error reading comments from '$owner/$repo' Pull Request#$pullNumber, skipping PR comment.  Ensure GITHUB_TOKEN has ``pull_requests:read`` repo permissions. (StatusCode:$(Get-ErrorStatusCode -ErrorRecord $_) Message:$($_.Exception.Message))"
+    }
+
+    $prCommentWatermark = '<!-- secret-scanning-review-pr-comment-watermark -->'
+    $existingComment = $comments | Where-Object { $_.body -match $prCommentWatermark } | Select-Object -First 1
+    if ($null -eq $existingComment -and -not $createIfMissing) {
+        return $null
+    }
+
+    $comment = @{
+        body = "{0}`n{1}`n<!-- {2} -->" -f $prCommentWatermark, $markdownSummary, (Get-Date).ToUniversalTime().ToString('o')
+    }
+    try {
+        if ($null -ne $existingComment) {
+            return Invoke-GHRestMethod -Method PATCH -Uri $existingComment.url -Body ($comment | ConvertTo-Json)
+        }
+        return Invoke-GHRestMethod -Method POST -Uri "$($apiBaseUrl.TrimEnd('/'))/repos/$owner/$repo/issues/$pullNumber/comments" -Body ($comment | ConvertTo-Json)
+    }
+    catch {
+        throw "Error adding comment to '$owner/$repo' Pull Request#$pullNumber.  Ensure GITHUB_TOKEN has ``pull_requests:write`` repo permissions. (StatusCode:$(Get-ErrorStatusCode -ErrorRecord $_) Message:$($_.Exception.Message))"
+    }
 }
 
 <#
@@ -466,6 +540,191 @@ function Test-ReviewCommentInPullRequest {
 
     $reviewComment = Get-PullRequestReviewComment -url $reviewCommentUrl -expectedApiBaseUrl $expectedApiBaseUrl
     return $reviewComment.pull_request_url -eq $pullRequestApiUrl
+}
+
+<#
+.SYNOPSIS
+Extracts the pull request number from a pull request comment html_url.
+
+.DESCRIPTION
+Returns the pull request number from a pull request comment html_url in the format
+https://<host>/<owner>/<repo>/pull/<number>#issuecomment-<id>, as provided in the html_url of a
+pull_request_comment secret scanning alert location. The owner and repository must match
+the given repository (case-insensitive).
+Returns $null when the URL is missing, is not in that format, or belongs to another repository.
+
+.PARAMETER htmlUrl
+The pull request comment html_url (location.details.html_url).
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.EXAMPLE
+Get-PullRequestNumberFromPullRequestCommentHtmlUrl -htmlUrl 'https://github.com/owner/repo/pull/42#issuecomment-12345' -owner 'owner' -repo 'repo'
+Returns: 42
+#>
+function Get-PullRequestNumberFromPullRequestCommentHtmlUrl {
+    param(
+        [string]$htmlUrl,
+        [string]$owner,
+        [string]$repo
+    )
+
+    if ($htmlUrl -cmatch '^https?://[^/?#\s]+/(?<owner>[^/?#\s]+)/(?<repo>[^/?#\s]+)/pull/(?<number>[0-9]+)#issuecomment-[0-9]+\z' -and
+        $matches.owner -ieq $owner -and $matches.repo -ieq $repo) {
+        return $matches.number -as [long]
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+Tests whether a pull request comment alert location belongs to a pull request.
+
+.DESCRIPTION
+Compares the pull request number in the location's html_url (see
+Get-PullRequestNumberFromPullRequestCommentHtmlUrl) with the given pull request number, without an API
+call. This also works for comments deleted after the secret was detected, which are no longer listed on
+the pull request.
+Only when html_url is missing or not in that format is the comment ID from pull_request_comment_url
+looked up in the comments returned by listPullRequestComments, which is only invoked then.
+Returns $false when the location has neither URL.
+
+.PARAMETER location
+The pull_request_comment secret scanning alert location.
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER pullNumber
+The pull request number.
+
+.PARAMETER listPullRequestComments
+A script block that returns the pull request comments (for example, with Get-PullRequestComment).
+It is only invoked when html_url cannot be used, so the caller can list the comments once, on first use.
+Its success-stream output is used as the comment list, so it must send any other output (such as workflow
+commands written by GitHubActions' Write-Action* functions) to the host.
+
+.EXAMPLE
+Test-PullRequestCommentInPullRequest -location $location -owner 'owner' -repo 'repo' -pullNumber 42 -listPullRequestComments { Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42 }
+Returns $true when the comment is on pull request #42, otherwise $false.
+#>
+function Test-PullRequestCommentInPullRequest {
+    param(
+        $location,
+        [string]$owner,
+        [string]$repo,
+        [int]$pullNumber,
+        [scriptblock]$listPullRequestComments
+    )
+
+    $htmlUrlPullNumber = Get-PullRequestNumberFromPullRequestCommentHtmlUrl -htmlUrl $location.details.html_url -owner $owner -repo $repo
+    if ($null -ne $htmlUrlPullNumber) {
+        return $htmlUrlPullNumber -eq $pullNumber
+    }
+
+    $commentId = Get-IdFromUrl -url $location.details.pull_request_comment_url
+    if (-not $commentId) {
+        return $false
+    }
+
+    foreach ($comment in @(& $listPullRequestComments)) {
+        if ($null -ne $comment -and $comment.id -eq $commentId) {
+            return $true
+        }
+    }
+    return $false
+}
+
+<#
+.SYNOPSIS
+Retrieves all items from a paginated GitHub API list endpoint.
+
+.DESCRIPTION
+Requests the list URL and follows the nextLink of each page. Invoke-GHRestMethod returns $null for an empty
+page and a single object (not an array) for a page with one item, so each page is unrolled and $null entries
+are skipped: only the listed items are returned.
+Errors are propagated to the caller. Items read before the error are attached to the exception as
+$_.Exception.Data['PartialResult'] so the caller can still review them.
+
+.PARAMETER url
+The list URL, including any query parameters.
+
+.EXAMPLE
+$alerts = @(Get-PagedResult -url 'https://api.github.com/repos/owner/repo/secret-scanning/alerts?per_page=100')
+Returns all secret scanning alerts for the repository.
+#>
+function Get-PagedResult {
+    param(
+        [string]$url
+    )
+
+    $items = [System.Collections.Generic.List[object]]::new()
+    try {
+        while ($url) {
+            $response = Invoke-GHRestMethod -Method GET -Uri $url -ExtendedResult $true
+            foreach ($item in @($response.result)) {
+                if ($null -ne $item) {
+                    $items.Add($item)
+                }
+            }
+            $url = $response.nextLink
+        }
+    }
+    catch {
+        $_.Exception.Data['PartialResult'] = $items.ToArray()
+        throw
+    }
+    return $items.ToArray()
+}
+
+<#
+.SYNOPSIS
+Gets the API URL of a secret scanning alert's locations.
+
+.DESCRIPTION
+Returns the alert's locations_url. When it is missing, the URL is built from the alert number
+(<API base URL>/repos/{owner}/{repo}/secret-scanning/alerts/{number}/locations), as the Python runtime does,
+so the alert is still reviewed. Returns $null when the alert has neither.
+
+.PARAMETER alert
+The secret scanning alert.
+
+.PARAMETER owner
+The repository owner.
+
+.PARAMETER repo
+The repository name.
+
+.PARAMETER apiBaseUrl
+The GitHub API base URL (e.g., https://api.github.com or https://<hostname>/api/v3).
+Defaults to https://api.github.com.
+
+.EXAMPLE
+Get-AlertLocationsUrl -alert @{ number = 42 } -owner 'owner' -repo 'repo' -apiBaseUrl 'https://api.github.com'
+Returns: 'https://api.github.com/repos/owner/repo/secret-scanning/alerts/42/locations'
+#>
+function Get-AlertLocationsUrl {
+    param(
+        $alert,
+        [string]$owner,
+        [string]$repo,
+        [string]$apiBaseUrl = 'https://api.github.com'
+    )
+
+    if (-not [String]::IsNullOrWhiteSpace($alert.locations_url)) {
+        return $alert.locations_url
+    }
+    if ($null -ne $alert.number) {
+        return "$($apiBaseUrl.TrimEnd('/'))/repos/$owner/$repo/secret-scanning/alerts/$($alert.number)/locations"
+    }
+    return $null
 }
 
 <#
@@ -765,4 +1024,4 @@ function Get-PullRequestNumberFromRef {
     return $null
 }
 
-Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef
+Export-ModuleMember -Function Get-IdFromUrl, Get-AlertLocationType, Get-PullRequestHtmlUrl, Get-AlertLocationWithLink, Get-PullRequestComment, Publish-PullRequestComment, Get-ErrorStatusCode, Get-PullRequestReviewComment, Get-PullRequestNumberFromReviewCommentHtmlUrl, Test-ReviewCommentInPullRequest, Get-PullRequestNumberFromPullRequestCommentHtmlUrl, Test-PullRequestCommentInPullRequest, Get-PagedResult, Get-AlertLocationsUrl, Get-PullRequestCommitSha, Get-EvaluationWarningMarkdown, Write-AlertAnnotation, Get-DismissalRequestForAlert, Get-AlertDismissalState, Get-PullRequestNumberFromRef

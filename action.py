@@ -316,7 +316,14 @@ def get_pull_request(github_token, repo_owner, repo_name, pull_request_number, h
             status_code
         ) from err
 
-def update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary, http_proxy_url, https_proxy_url, verify_ssl):
+def update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary, http_proxy_url, https_proxy_url, verify_ssl, create_if_missing=True):
+    """Create or update the action's summary comment on the pull request.
+
+    Updates the first comment that contains the action's watermark with markdown_summary. When there is none,
+    a new comment is created, unless create_if_missing is False. The caller passes False when no alerts were
+    found, so a summary comment from an earlier run is corrected, but no new comment is added.
+    Errors are raised as EvaluationError.
+    """
     # API documentation: https://docs.github.com/en/enterprise-cloud@latest/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment    
     comments = []
     per_page = 100
@@ -345,6 +352,9 @@ def update_pull_request_comment(github_token, repo_owner, repo_name, pull_reques
         raise EvaluationError(f"Error reading comments from '{repo_owner}/{repo_name}' Pull Request#{pull_request_number}, skipping PR comment. Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:{status_code} Message:{e})", status_code) from e
     pr_comment_watermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
     existing_comment = next((comment for comment in comments if pr_comment_watermark in comment['body']), None)
+    if existing_comment is None and not create_if_missing:
+        print("No PR comment from an earlier run to update")
+        return
     comment = {
         'body': f"{pr_comment_watermark}\n{markdown_summary}\n<!-- {datetime.now(timezone.utc).isoformat()} -->"
     }
@@ -480,6 +490,45 @@ def is_review_comment_in_pull_request(github_token, location, repo_owner, repo_n
     pr_review_comment = get_pull_request_review_comment(github_token, pr_review_comment_url, http_proxy_url, https_proxy_url, verify_ssl)
     return pr_review_comment.get('pull_request_url') == pull_request_url
 
+def get_pull_request_number_from_pull_request_comment_html_url(html_url, repo_owner, repo_name):
+    """Extract the pull request number from a pull request comment html_url.
+
+    Expects https://<host>/<owner>/<repo>/pull/<number>#issuecomment-<id>, as provided in the html_url
+    of a pull_request_comment secret scanning alert location. The owner and repository must match
+    the given repository (case-insensitive).
+    Returns None when html_url is missing, is not in that format, or belongs to another repository.
+    """
+    if not isinstance(html_url, str):
+        return None
+    match = re.fullmatch(r'https?://[^/?#\s]+/([^/?#\s]+)/([^/?#\s]+)/pull/([0-9]+)#issuecomment-[0-9]+', html_url)
+    if not match:
+        return None
+    owner, repo, number = match.groups()
+    if owner.lower() != repo_owner.lower() or repo.lower() != repo_name.lower():
+        return None
+    return int(number)
+
+def is_pull_request_comment_in_pull_request(location, repo_owner, repo_name, pull_request_number, list_pull_request_comments):
+    """Return whether a pull_request_comment alert location belongs to the pull request.
+
+    Compares the pull request number in the location's html_url (see
+    get_pull_request_number_from_pull_request_comment_html_url) with pull_request_number, without an API call.
+    This also works for comments deleted after the secret was detected, which are no longer listed on the pull request.
+    Only when html_url is missing or not in that format is the comment ID from pull_request_comment_url looked up
+    in the comments returned by list_pull_request_comments, which is only called then, so the caller can list the
+    comments once, on first use.
+    Returns False when the location has neither URL.
+    """
+    details = location['details']
+    html_url_pull_request_number = get_pull_request_number_from_pull_request_comment_html_url(details.get('html_url'), repo_owner, repo_name)
+    if html_url_pull_request_number is not None:
+        return html_url_pull_request_number == int(pull_request_number)
+    pull_request_comment_url = details.get('pull_request_comment_url')
+    if not pull_request_comment_url:
+        return False
+    comment_id = pull_request_comment_url.rstrip('/').split('/')[-1]
+    return any(str(comment.get('id')) == comment_id for comment in list_pull_request_comments())
+
 def get_pull_request_number_from_ref(github_ref):
     """Extract the pull request number from the GITHUB_REF environment variable.
 
@@ -613,7 +662,20 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     alerts_in_pr = []
     alerts_reviewed = 0
     alert_locations_by_number = {}
+    # PR comments are only listed for 'pull_request_comment' locations without a usable html_url, once on first use
     pr_comments = None
+
+    def list_pull_request_comments():
+        nonlocal pr_comments
+        if pr_comments is None:
+            try:
+                pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
+            except EvaluationError as err:
+                handle_evaluation_error(EvaluationError(f"{err} Secrets in PR comments that could not be read are not reviewed.", err.status_code), fail_closed, evaluation_warnings)
+                # fail-closed is disabled: still review any comments that were read before the error
+                pr_comments = err.partial_result or []
+        return pr_comments
+
     for alert in alerts:
         try:
             alert_locations = get_locations_for_alert(github_token, repo_owner, repo_name, alert['number'], http_proxy_url, https_proxy_url, verify_ssl)
@@ -639,19 +701,13 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
                     alerts_in_pr.append(alert)
                     break
             elif location['type'] == 'pull_request_comment':
-                if pr_comments is None:
-                    try:
-                        pr_comments = get_pull_request_comments(github_token, repo_owner, repo_name, pull_request_number, http_proxy_url, https_proxy_url, verify_ssl)
-                    except EvaluationError as err:
-                        handle_evaluation_error(EvaluationError(f"{err} Secrets in PR comments that could not be read are not reviewed.", err.status_code), fail_closed, evaluation_warnings)
-                        # fail-closed is disabled: still review any comments that were read before the error
-                        pr_comments = err.partial_result or []
-                comment_id = location['details']['pull_request_comment_url'].split('/')[-1]
-                for comment in pr_comments:
-                    if str(comment['id']) == comment_id:
-                        logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR comment.")
-                        alerts_in_pr.append(alert)
-                        break
+                # The PR number is read from the location's html_url without an API call, so a comment deleted after
+                # detection is still matched to the PR it was posted on. Only when html_url is missing or not in the
+                # expected format are the PR comments listed (once) and the comment looked up by its ID.
+                if is_pull_request_comment_in_pull_request(location, repo_owner, repo_name, pull_request_number, list_pull_request_comments):
+                    logging.debug(f"MATCH FOUND: Alert {alert['number']} is in a PR comment.")
+                    alerts_in_pr.append(alert)
+                    break
             elif location['type'] == 'pull_request_review':
                 # remove '/reviews/1234567890' from the end of the pull_request_review_url to compare against the PR URL:
                 shortened_pr_review_url = location['details']['pull_request_review_url'].rstrip('/').rsplit('/', 2)[0]
@@ -789,14 +845,19 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         )
         markdown_summary += markdown_summary_table_rows
     
-    # PR Comment Summary only if not disabled and alerts were found
-    if not disable_pr_comment and len(alerts_in_pr) > 0:
+    # PR Comment Summary, unless disabled:
+    # - alerts were found: create the comment, or update the one from an earlier run
+    # - no alerts were found: only update a comment from an earlier run, so it no longer reports alerts that are gone.
+    #   No comment is created, and an incomplete review (errors reported as warnings) leaves the earlier comment unchanged.
+    if disable_pr_comment:
+        print(f"Skipping PR comment update - disable-pr-comment is set to {disable_pr_comment}")
+    elif not alerts_in_pr and evaluation_warnings:
+        print("Skipping PR comment update - no alerts were found, but the review could not be fully completed")
+    else:
         try:
-            update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary + get_evaluation_warning_markdown(evaluation_warnings), http_proxy_url, https_proxy_url, verify_ssl)
+            update_pull_request_comment(github_token, repo_owner, repo_name, pull_request_number, markdown_summary + get_evaluation_warning_markdown(evaluation_warnings), http_proxy_url, https_proxy_url, verify_ssl, create_if_missing=len(alerts_in_pr) > 0)
         except EvaluationError as err:
             handle_evaluation_error(err, fail_closed, evaluation_warnings)
-    else:
-        print(f"Skipping PR comment update - disable-pr-comment is set to {disable_pr_comment} and alert count in PR is {len(alerts_in_pr)}")
 
     # Include any errors that were reported as warnings (fail-closed disabled)
     markdown_summary += get_evaluation_warning_markdown(evaluation_warnings)

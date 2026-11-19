@@ -1,6 +1,7 @@
 """Tests for pagination in action.py"""
 
 import importlib
+import json
 import sys
 import os
 from pathlib import Path
@@ -172,6 +173,39 @@ class TestUpdatePullRequestCommentPagination:
 
         # Should have used PATCH (existing comment found), not POST
         assert mock_patch.call_count == 1
+
+
+class TestUpdatePullRequestCommentCreateIfMissing:
+    """Tests for update_pull_request_comment when no new comment may be created (no alerts found)."""
+
+    WATERMARK = "<!-- secret-scanning-review-pr-comment-watermark -->"
+
+    @patch("action.requests.patch")
+    @patch("action.requests.post")
+    @patch("action.requests.get")
+    def test_updates_comment_from_earlier_run(self, mock_get, mock_post, mock_patch):
+        mock_get.return_value = _mock_response([
+            {"id": 1, "body": "Looks good", "url": _make_issue_comment_url("owner", "repo", 1)},
+            {"id": 2, "body": f"{self.WATERMARK}\nFound [1] secret scanning alert", "url": _make_issue_comment_url("owner", "repo", 2)},
+        ])
+        mock_patch.return_value = _mock_response({"html_url": "https://github.com/owner/repo/pull/1#issuecomment-2"})
+
+        action.update_pull_request_comment("token", "owner", "repo", 1, "Found [0] secret scanning alerts", None, None, True, create_if_missing=False)
+
+        mock_post.assert_not_called()
+        assert mock_patch.call_args[0][0] == _make_issue_comment_url("owner", "repo", 2)
+        assert mock_patch.call_args.kwargs["json"]["body"].startswith(f"{self.WATERMARK}\nFound [0] secret scanning alerts\n")
+
+    @patch("action.requests.patch")
+    @patch("action.requests.post")
+    @patch("action.requests.get")
+    def test_does_not_create_comment(self, mock_get, mock_post, mock_patch):
+        mock_get.return_value = _mock_response([{"id": 1, "body": "Looks good", "url": _make_issue_comment_url("owner", "repo", 1)}])
+
+        action.update_pull_request_comment("token", "owner", "repo", 1, "Found [0] secret scanning alerts", None, None, True, create_if_missing=False)
+
+        mock_post.assert_not_called()
+        mock_patch.assert_not_called()
 
 
 class TestApiBaseUrl:
@@ -405,8 +439,38 @@ class TestGetPullRequestNumberFromReviewCommentHtmlUrl:
         assert action.get_pull_request_number_from_review_comment_html_url(html_url, "owner", "repo") is None
 
 
+class TestGetPullRequestNumberFromPullRequestCommentHtmlUrl:
+    """Tests for get_pull_request_number_from_pull_request_comment_html_url."""
+
+    @pytest.mark.parametrize("html_url,expected", [
+        ("https://github.com/owner/repo/pull/4#issuecomment-1081119451", 4),
+        ("https://github.com/Owner/REPO/pull/12#issuecomment-1", 12),
+        ("https://tenant.ghe.com/owner/repo/pull/7#issuecomment-2", 7),
+    ])
+    def test_returns_pull_request_number(self, html_url, expected):
+        assert action.get_pull_request_number_from_pull_request_comment_html_url(html_url, "owner", "repo") == expected
+
+    @pytest.mark.parametrize("html_url", [
+        None,
+        "",
+        "https://github.com/other/repo/pull/4#issuecomment-1",
+        "https://github.com/owner/other/pull/4#issuecomment-1",
+        "https://github.com/owner/repo/pull/4",
+        "https://github.com/owner/repo/pull/4#discussion_r1",
+        "https://github.com/owner/repo/issues/4#issuecomment-1",
+        "https://github.com/owner/repo/pulls/4#issuecomment-1",
+        "https://github.com/owner/repo/pull/4/files#issuecomment-1",
+        "https://github.com/owner/repo/pull/abc#issuecomment-1",
+        "https://github.com/owner/repo/pull/4#issuecomment-1\n",
+        "/owner/repo/pull/4#issuecomment-1",
+    ])
+    def test_returns_none_for_missing_malformed_or_other_repository(self, html_url):
+        assert action.get_pull_request_number_from_pull_request_comment_html_url(html_url, "owner", "repo") is None
+
+
 PR_API_URL = "https://api.github.com/repos/owner/repo/pulls/1"
 REVIEW_COMMENT_URL = "https://api.github.com/repos/owner/repo/pulls/comments/99"
+PR_COMMENT_URL = "https://api.github.com/repos/owner/repo/issues/comments/5"
 
 
 def _alert(number=1):
@@ -437,9 +501,9 @@ class TestMainFailClosed:
         return summary, output
 
     @staticmethod
-    def _run(fail_closed, fail_on_alert=False):
+    def _run(fail_closed, fail_on_alert=False, disable_pr_comment=True):
         with pytest.raises(SystemExit) as exc:
-            action.main(None, fail_on_alert, False, True, None, None, True, False, False, fail_closed)
+            action.main(None, fail_on_alert, False, disable_pr_comment, None, None, True, False, False, fail_closed)
         return exc.value.code
 
     @staticmethod
@@ -650,6 +714,132 @@ class TestMainFailClosed:
         assert self._run(False, fail_on_alert=True) == 1
         assert "alerts=[]" not in output.read_text()
         assert "Error reading comments page 2" in summary.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize("fail_closed", [True, False])
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_pull_request_comments")
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_pr_comment_html_url_for_this_pr_is_matched_without_listing_comments(self, mock_pr, _shas, mock_alerts, mock_locations, mock_comments, _dismissal, fail_closed, env):
+        """A PR comment deleted after detection (no longer listed) is matched to its PR by html_url, whatever fail-closed is."""
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [{"type": "pull_request_comment", "details": {
+            "pull_request_comment_url": PR_COMMENT_URL,
+            "html_url": "https://github.com/owner/repo/pull/1#issuecomment-5",
+        }}]
+        mock_comments.return_value = []
+
+        assert self._run(fail_closed, fail_on_alert=True) == 1
+        mock_comments.assert_not_called()
+
+    @pytest.mark.parametrize("fail_closed", [True, False])
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_pull_request_comments")
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_pr_comment_html_url_for_other_pr_is_not_matched_without_listing_comments(self, mock_pr, _shas, mock_alerts, mock_locations, mock_comments, _dismissal, fail_closed, env):
+        _, output = env
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [{"type": "pull_request_comment", "details": {
+            "pull_request_comment_url": PR_COMMENT_URL,
+            "html_url": "https://github.com/owner/repo/pull/4#issuecomment-5",
+        }}]
+        mock_comments.return_value = []
+
+        assert self._run(fail_closed, fail_on_alert=True) == 0
+        assert "alerts=[]" in output.read_text()
+        mock_comments.assert_not_called()
+
+    @pytest.mark.parametrize("html_url", [None, "https://github.com/owner/repo/pull/1"])
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_pull_request_comments")
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_pr_comment_without_usable_html_url_is_matched_by_listed_comment_id(self, mock_pr, _shas, mock_alerts, mock_locations, mock_comments, _dismissal, html_url, env):
+        """Without a usable html_url, the PR comments are listed once and the comment is matched by its ID."""
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert(1), _alert(2)], []]
+        details = {"pull_request_comment_url": PR_COMMENT_URL}
+        if html_url is not None:
+            details["html_url"] = html_url
+        mock_locations.return_value = [{"type": "pull_request_comment", "details": details}]
+        mock_comments.return_value = [{"id": 5}]
+
+        assert self._run(True, fail_on_alert=True) == 1
+        mock_comments.assert_called_once()
+
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_pull_request_comments", return_value=[{"id": 5}])
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_alert_matched_in_pr_comment_and_commit_is_reported_once(self, mock_pr, _shas, mock_alerts, mock_locations, _comments, _dismissal, env):
+        summary, output = env
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [
+            {"type": "pull_request_comment", "details": {"pull_request_comment_url": PR_COMMENT_URL, "html_url": "https://github.com/owner/repo/pull/1#issuecomment-5"}},
+            {"type": "commit", "details": {"commit_sha": "abc", "path": "a.txt", "start_line": 1, "start_column": 1}},
+        ]
+
+        assert self._run(True) == 0
+        assert len(json.loads(output.read_text(encoding="utf-8").split("alerts=", 1)[1])) == 1
+        assert "Found [1] secret scanning alert " in summary.read_text(encoding="utf-8")
+
+    @patch("action.update_pull_request_comment")
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_pr_comment_from_earlier_run_is_updated_when_no_alerts_are_found(self, mock_pr, _shas, mock_alerts, mock_locations, mock_update, env):
+        """A PR comment from an earlier run is updated with the 0-alert summary, but no new comment is created."""
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [{"type": "commit", "details": {"commit_sha": "not-in-pr", "path": "a.txt", "start_line": 1, "start_column": 1}}]
+
+        assert self._run(True, disable_pr_comment=False) == 0
+        mock_update.assert_called_once()
+        assert "Found [0] secret scanning alerts" in mock_update.call_args[0][4]
+        assert mock_update.call_args.kwargs["create_if_missing"] is False
+
+    @patch("action.update_pull_request_comment")
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_pr_comment_is_created_or_updated_when_alerts_are_found(self, mock_pr, _shas, mock_alerts, mock_locations, _dismissal, mock_update, env):
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [{"type": "commit", "details": {"commit_sha": "abc", "path": "a.txt", "start_line": 1, "start_column": 1}}]
+
+        assert self._run(True, disable_pr_comment=False) == 0
+        mock_update.assert_called_once()
+        assert "Found [1] secret scanning alert " in mock_update.call_args[0][4]
+        assert mock_update.call_args.kwargs["create_if_missing"] is True
+
+    @patch("action.update_pull_request_comment")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_pr_comment_is_not_updated_when_no_alerts_are_found_in_incomplete_review(self, mock_pr, _shas, mock_alerts, mock_update, env):
+        """An incomplete review (fail-closed disabled, errors reported as warnings) leaves a PR comment from an earlier run unchanged."""
+        summary, _ = env
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[], action.EvaluationError("Error getting generic alerts", 500)]
+
+        assert self._run(False, disable_pr_comment=False) == 0
+        mock_update.assert_not_called()
+        assert "Error getting generic alerts" in summary.read_text(encoding="utf-8")
 
     @patch("action.get_dismissal_request_for_alert", return_value=None)
     @patch("action.get_locations_for_alert")

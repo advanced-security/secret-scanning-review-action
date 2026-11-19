@@ -15,7 +15,8 @@ BeforeAll {
         param(
             $Method,
             $Uri,
-            $ExtendedResult
+            $ExtendedResult,
+            $Body
         )
     }
     function global:Write-ActionError {
@@ -171,6 +172,12 @@ Describe 'Get-AlertLocationWithLink' {
     BeforeEach {
         # Default mock - return null to test fallback paths
         Mock Get-PullRequestHtmlUrl { return $null } -ModuleName ActionHelpers
+        $script:originalServerUrl = $env:GITHUB_SERVER_URL
+        $env:GITHUB_SERVER_URL = $null
+    }
+
+    AfterEach {
+        $env:GITHUB_SERVER_URL = $script:originalServerUrl
     }
 
     It 'Throws when location has no type field' {
@@ -209,19 +216,51 @@ Describe 'Get-AlertLocationWithLink' {
         $result | Should -Be 'Pull request title'
     }
 
-    It 'Returns fallback URL for pull_request_review_comment when API fails' {
-        Mock Get-PullRequestHtmlUrl { return $null } -ModuleName ActionHelpers
+    It 'Uses the location html_url for pull_request_review_comment without an API call' {
+        $location = @{
+            type = 'pull_request_review_comment'
+            details = @{
+                pull_request_review_comment_url = 'https://api.tenant.ghe.com/repos/owner/repo/pulls/comments/12345'
+                html_url                        = 'https://tenant.ghe.com/owner/repo/pull/42#discussion_r12345'
+            }
+        }
+        $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://tenant.ghe.com/owner/repo/pull/42' -pullRequestNumber 42
+        $result | Should -Be '[Pull request review comment](https://tenant.ghe.com/owner/repo/pull/42#discussion_r12345)'
+        Should -Invoke Get-PullRequestHtmlUrl -Times 0 -Exactly -ModuleName ActionHelpers
+    }
 
+    It 'Builds the pull_request_review_comment link on GITHUB_SERVER_URL when html_url is missing (<case>)' -TestCases @(
+        @{ case = 'GHE.com'; serverUrl = 'https://tenant.ghe.com'; apiUrl = 'https://api.tenant.ghe.com/repos/owner/repo/pulls/comments/12345'; expected = 'https://tenant.ghe.com/owner/repo/pull/42#discussion_r12345' }
+        @{ case = 'GHES'; serverUrl = 'https://ghes.example.com/'; apiUrl = 'https://ghes.example.com/api/v3/repos/owner/repo/pulls/comments/12345'; expected = 'https://ghes.example.com/owner/repo/pull/42#discussion_r12345' }
+    ) {
+        param($serverUrl, $apiUrl, $expected)
+        $env:GITHUB_SERVER_URL = $serverUrl
+        $location = @{
+            type = 'pull_request_review_comment'
+            details = @{ pull_request_review_comment_url = $apiUrl }
+        }
+        $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://example.com/owner/repo/pull/42' -pullRequestNumber 42
+        $result | Should -Be "[Pull request review comment]($expected)"
+    }
+
+    It 'Builds the pull_request_review_comment link on https://github.com when html_url and GITHUB_SERVER_URL are missing' {
         $location = @{
             type = 'pull_request_review_comment'
             details = @{ pull_request_review_comment_url = 'https://api.github.com/repos/owner/repo/pulls/comments/12345' }
         }
         $result = Get-AlertLocationWithLink -location $location -prHtmlUrl 'https://github.com/owner/repo/pull/42' -pullRequestNumber 42
         $result | Should -Be '[Pull request review comment](https://github.com/owner/repo/pull/42#discussion_r12345)'
+        Should -Invoke Get-PullRequestHtmlUrl -Times 0 -Exactly -ModuleName ActionHelpers
     }
 }
 
 Describe 'Get-PullRequestComment' {
+    It 'Returns no comments for a pull request without comments' {
+        # Invoke-GHRestMethod returns $null for an empty page
+        Mock Invoke-GHRestMethod { return $null } -ModuleName ActionHelpers
+
+        @(Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42).Count | Should -Be 0
+    }
     It 'Propagates API errors to the caller' {
         Mock Invoke-GHRestMethod { throw "API Error" } -ModuleName ActionHelpers
 
@@ -284,6 +323,63 @@ Describe 'Get-PullRequestComment' {
         Should -Invoke Invoke-GHRestMethod -Times 1 -ModuleName ActionHelpers -ParameterFilter {
             $Uri -like 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments*' -and $Method -eq 'GET'
         }
+    }
+}
+
+Describe 'Publish-PullRequestComment' {
+    BeforeAll {
+        $script:commentArgs = @{ owner = 'owner'; repo = 'repo'; pullNumber = 42 }
+    }
+
+    It 'Updates the summary comment from an earlier run (createIfMissing: <createIfMissing>)' -TestCases @(
+        @{ createIfMissing = $true }
+        @{ createIfMissing = $false }
+    ) {
+        param($createIfMissing)
+        Mock Get-PullRequestComment {
+            @(
+                @{ body = 'Looks good'; url = 'https://api.github.com/repos/owner/repo/issues/comments/1' }
+                @{ body = "<!-- secret-scanning-review-pr-comment-watermark -->`nFound [1] secret scanning alert"; url = 'https://api.github.com/repos/owner/repo/issues/comments/2' }
+            )
+        } -ModuleName ActionHelpers
+        Mock Invoke-GHRestMethod { @{ html_url = 'https://github.com/owner/repo/pull/42#issuecomment-2' } } -ModuleName ActionHelpers
+
+        $result = Publish-PullRequestComment @script:commentArgs -markdownSummary 'Found [0] secret scanning alerts' -createIfMissing $createIfMissing
+        $result.html_url | Should -Be 'https://github.com/owner/repo/pull/42#issuecomment-2'
+        Should -Invoke Invoke-GHRestMethod -Times 1 -Exactly -ModuleName ActionHelpers
+        Should -Invoke Invoke-GHRestMethod -Times 1 -Exactly -ModuleName ActionHelpers -ParameterFilter {
+            $Method -eq 'PATCH' -and $Uri -eq 'https://api.github.com/repos/owner/repo/issues/comments/2' -and
+            ($Body | ConvertFrom-Json).body.StartsWith("<!-- secret-scanning-review-pr-comment-watermark -->`nFound [0] secret scanning alerts`n<!-- ")
+        }
+    }
+
+    It 'Creates a comment when there is none and createIfMissing is true' {
+        Mock Get-PullRequestComment { @(@{ body = 'Looks good'; url = 'https://api.tenant.ghe.com/repos/owner/repo/issues/comments/1' }) } -ModuleName ActionHelpers
+        Mock Invoke-GHRestMethod { @{ html_url = 'https://tenant.ghe.com/owner/repo/pull/42#issuecomment-3' } } -ModuleName ActionHelpers
+
+        Publish-PullRequestComment @script:commentArgs -markdownSummary 'Found [1] secret scanning alert' -apiBaseUrl 'https://api.tenant.ghe.com' | Should -Not -BeNullOrEmpty
+        Should -Invoke Invoke-GHRestMethod -Times 1 -Exactly -ModuleName ActionHelpers -ParameterFilter {
+            $Method -eq 'POST' -and $Uri -eq 'https://api.tenant.ghe.com/repos/owner/repo/issues/42/comments'
+        }
+    }
+
+    It 'Does not create a comment when there is none and createIfMissing is false' {
+        Mock Get-PullRequestComment { @(@{ body = 'Looks good'; url = 'https://api.github.com/repos/owner/repo/issues/comments/1' }) } -ModuleName ActionHelpers
+        Mock Invoke-GHRestMethod { } -ModuleName ActionHelpers
+
+        Publish-PullRequestComment @script:commentArgs -markdownSummary 'Found [0] secret scanning alerts' -createIfMissing $false | Should -BeNullOrEmpty
+        Should -Invoke Invoke-GHRestMethod -Times 0 -Exactly -ModuleName ActionHelpers
+    }
+
+    It 'Throws an error naming the failed request when the comments cannot be read' {
+        Mock Get-PullRequestComment { throw 'Server Error' } -ModuleName ActionHelpers
+        { Publish-PullRequestComment @script:commentArgs -markdownSummary 'summary' } | Should -Throw "Error reading comments from 'owner/repo' Pull Request#42*Server Error*"
+    }
+
+    It 'Throws an error naming the failed request when the comment cannot be written' {
+        Mock Get-PullRequestComment { } -ModuleName ActionHelpers
+        Mock Invoke-GHRestMethod { throw 'Forbidden' } -ModuleName ActionHelpers
+        { Publish-PullRequestComment @script:commentArgs -markdownSummary 'summary' } | Should -Throw "Error adding comment to 'owner/repo' Pull Request#42*Forbidden*"
     }
 }
 
@@ -411,6 +507,135 @@ Describe 'Test-ReviewCommentInPullRequest' {
         }
 
         { Test-ReviewCommentInPullRequest -location $location @script:pullRequestArgs } | Should -Throw '*Not Found*'
+    }
+}
+
+Describe 'Get-PullRequestNumberFromPullRequestCommentHtmlUrl' {
+    It 'Returns the pull request number from <htmlUrl>' -TestCases @(
+        @{ htmlUrl = 'https://github.com/owner/repo/pull/4#issuecomment-1081119451'; expected = 4 }
+        @{ htmlUrl = 'https://github.com/Owner/REPO/pull/12#issuecomment-1'; expected = 12 }
+        @{ htmlUrl = 'https://tenant.ghe.com/owner/repo/pull/7#issuecomment-2'; expected = 7 }
+    ) {
+        param($htmlUrl, $expected)
+        Get-PullRequestNumberFromPullRequestCommentHtmlUrl -htmlUrl $htmlUrl -owner 'owner' -repo 'repo' | Should -Be $expected
+    }
+
+    It 'Returns null when html_url is <case>' -TestCases @(
+        @{ case = 'missing'; htmlUrl = $null }
+        @{ case = 'empty'; htmlUrl = '' }
+        @{ case = 'for another owner'; htmlUrl = 'https://github.com/other/repo/pull/4#issuecomment-1' }
+        @{ case = 'for another repository'; htmlUrl = 'https://github.com/owner/other/pull/4#issuecomment-1' }
+        @{ case = 'without a fragment'; htmlUrl = 'https://github.com/owner/repo/pull/4' }
+        @{ case = 'a review comment fragment'; htmlUrl = 'https://github.com/owner/repo/pull/4#discussion_r1' }
+        @{ case = 'an issue path'; htmlUrl = 'https://github.com/owner/repo/issues/4#issuecomment-1' }
+        @{ case = 'a pulls path'; htmlUrl = 'https://github.com/owner/repo/pulls/4#issuecomment-1' }
+        @{ case = 'a path with extra segments'; htmlUrl = 'https://github.com/owner/repo/pull/4/files#issuecomment-1' }
+        @{ case = 'a non-numeric pull request number'; htmlUrl = 'https://github.com/owner/repo/pull/abc#issuecomment-1' }
+        @{ case = 'followed by a newline'; htmlUrl = "https://github.com/owner/repo/pull/4#issuecomment-1`n" }
+        @{ case = 'relative'; htmlUrl = '/owner/repo/pull/4#issuecomment-1' }
+    ) {
+        param($htmlUrl)
+        Get-PullRequestNumberFromPullRequestCommentHtmlUrl -htmlUrl $htmlUrl -owner 'owner' -repo 'repo' | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Test-PullRequestCommentInPullRequest' {
+    BeforeAll {
+        # Pull request #1 in owner/repo
+        $script:pullRequestArgs = @{
+            owner      = 'owner'
+            repo       = 'repo'
+            pullNumber = 1
+        }
+    }
+
+    It 'Matches an html_url for this pull request without listing comments' {
+        # A comment deleted after detection is no longer listed on the pull request
+        $listCount = [System.Collections.Generic.List[int]]::new()
+        $location = @{ type = 'pull_request_comment'; details = @{
+                pull_request_comment_url = 'https://api.github.com/repos/owner/repo/issues/comments/99'
+                html_url                 = 'https://github.com/owner/repo/pull/1#issuecomment-99'
+            }
+        }
+
+        Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { $listCount.Add(1); @() } | Should -BeTrue
+        $listCount.Count | Should -Be 0
+    }
+
+    It 'Does not match an html_url for another pull request and does not list comments' {
+        $listCount = [System.Collections.Generic.List[int]]::new()
+        $location = @{ type = 'pull_request_comment'; details = @{
+                pull_request_comment_url = 'https://api.github.com/repos/owner/repo/issues/comments/99'
+                html_url                 = 'https://github.com/owner/repo/pull/4#issuecomment-99'
+            }
+        }
+
+        Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { $listCount.Add(1); @() } | Should -BeFalse
+        $listCount.Count | Should -Be 0
+    }
+
+    It 'Falls back to the listed comments when html_url is <case>' -TestCases @(
+        @{ case = 'missing'; details = @{ pull_request_comment_url = 'https://api.github.com/repos/owner/repo/issues/comments/99' } }
+        @{ case = 'malformed'; details = @{ pull_request_comment_url = 'https://api.github.com/repos/owner/repo/issues/comments/99'; html_url = 'https://github.com/owner/repo/pull/1' } }
+    ) {
+        param($details)
+        $location = @{ type = 'pull_request_comment'; details = $details }
+
+        Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { @(@{ id = 98 }, @{ id = 99 }) } | Should -BeTrue
+        Test-PullRequestCommentInPullRequest -location $location @script:pullRequestArgs -listPullRequestComments { @(@{ id = 98 }) } | Should -BeFalse
+    }
+}
+
+Describe 'Get-PagedResult' {
+    It 'Returns no items for an empty list' {
+        # Invoke-GHRestMethod returns a $null result for an empty page
+        Mock Invoke-GHRestMethod { return @{ result = $null; nextLink = $null } } -ModuleName ActionHelpers
+
+        @(Get-PagedResult -url 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100').Count | Should -Be 0
+    }
+
+    It 'Follows nextLink, including a page with a single item' {
+        # Invoke-GHRestMethod returns a single object (not an array) for a page with one item
+        Mock Invoke-GHRestMethod {
+            if ($Uri -like '*page=2') { return @{ result = [pscustomobject]@{ number = 3 }; nextLink = $null } }
+            return @{ result = @([pscustomobject]@{ number = 1 }, [pscustomobject]@{ number = 2 }); nextLink = 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100&page=2' }
+        } -ModuleName ActionHelpers
+
+        $result = @(Get-PagedResult -url 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100')
+        $result.number | Should -Be @(1, 2, 3)
+        Should -Invoke Invoke-GHRestMethod -Times 2 -Exactly -ModuleName ActionHelpers
+    }
+
+    It 'Attaches items read before an error to the exception' {
+        Mock Invoke-GHRestMethod {
+            if ($Uri -like '*page=2') { throw 'Bad Gateway' }
+            return @{ result = [pscustomobject]@{ number = 1 }; nextLink = 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100&page=2' }
+        } -ModuleName ActionHelpers
+
+        $caught = $null
+        try { Get-PagedResult -url 'https://api.github.com/repos/o/r/secret-scanning/alerts?per_page=100' } catch { $caught = $_ }
+
+        $caught.Exception.Message | Should -BeLike '*Bad Gateway*'
+        @($caught.Exception.Data['PartialResult']).number | Should -Be @(1)
+    }
+}
+
+Describe 'Get-AlertLocationsUrl' {
+    It 'Returns the alert locations_url' {
+        $alert = @{ number = 42; locations_url = 'https://api.tenant.ghe.com/repos/owner/repo/secret-scanning/alerts/42/locations' }
+        Get-AlertLocationsUrl -alert $alert -owner 'owner' -repo 'repo' -apiBaseUrl 'https://api.tenant.ghe.com' | Should -Be 'https://api.tenant.ghe.com/repos/owner/repo/secret-scanning/alerts/42/locations'
+    }
+
+    It 'Builds the URL from the alert number when locations_url is <case>' -TestCases @(
+        @{ case = 'missing'; alert = @{ number = 42 } }
+        @{ case = 'blank'; alert = @{ number = 42; locations_url = ' ' } }
+    ) {
+        param($alert)
+        Get-AlertLocationsUrl -alert $alert -owner 'owner' -repo 'repo' -apiBaseUrl 'https://ghes.example.com/api/v3/' | Should -Be 'https://ghes.example.com/api/v3/repos/owner/repo/secret-scanning/alerts/42/locations'
+    }
+
+    It 'Returns null when the alert has neither a number nor a locations_url' {
+        Get-AlertLocationsUrl -alert @{ secret_type = 'password' } -owner 'owner' -repo 'repo' | Should -BeNullOrEmpty
     }
 }
 

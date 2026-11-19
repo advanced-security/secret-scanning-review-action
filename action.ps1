@@ -49,12 +49,19 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         an API call. Only when html_url is missing or not in the expected format is the review comment looked up; if
         it is not accessible (404, for example a pending or deleted review comment), it is counted as a match when
         true, and skipped with a warning when false.
+        Secrets in PR comments are also matched by the pull request number in the alert location's html_url, so a
+        comment deleted after detection is still matched. Only when html_url is missing or not in the expected format
+        are the PR comments listed to look up the comment.
         Dismissal request lookups are informational only and never fail the workflow.
         Configuration errors (missing token, event other than pull_request or merge_group) always fail the workflow.
         Default is true.
 
 .PARAMETER DisablePRComment
         If provided, will disable the PR comment feature.
+        Otherwise, a PR comment with the summary is created when matching alerts are found, and the same comment is
+        updated on later runs. When a later run finds no matching alerts, that comment is updated with the new summary,
+        but no comment is created, and the comment is left unchanged when the review could not be fully completed
+        (FailClosed is false and errors were reported as warnings).
         Default is false.
 
 .PARAMETER DisableWorkflowSummary
@@ -275,13 +282,7 @@ if ($SkipClosedAlerts) {
     $repoAlertsUrl += "&state=open"
 }
 try {
-    $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $repoAlertsUrl -ExtendedResult $true
-    $alerts = [System.Collections.ArrayList]@($alertsResponse.result)
-    # Get the next page of secret scanning alerts if there is one
-    while ($alertsResponse.nextLink) {
-        $alertsResponse = Invoke-GHRestMethod -Method GET -Uri $alertsResponse.nextLink -ExtendedResult $true
-        $alerts.AddRange($alertsResponse.result)
-    }
+    $alerts = [System.Collections.ArrayList]@(Get-PagedResult -url $repoAlertsUrl)
     Write-ActionInfo "Found $($alerts.Count) default secret scanning alert$($alerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
 }
 catch {
@@ -311,20 +312,15 @@ $genericAlertsUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/secret-
 if ($SkipClosedAlerts) {
     $genericAlertsUrl += "&state=open"
 }
-$genericAlerts = [System.Collections.ArrayList]::new()
+$genericAlerts = @()
 try {
-    $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsUrl -ExtendedResult $true
-    $genericAlerts = [System.Collections.ArrayList]@($genericAlertsResponse.result)
-    # Get the next page of generic secret scanning alerts if there is one
-    while ($genericAlertsResponse.nextLink) {
-        $genericAlertsResponse = Invoke-GHRestMethod -Method GET -Uri $genericAlertsResponse.nextLink -ExtendedResult $true
-        $genericAlerts.AddRange($genericAlertsResponse.result)
-    }
+    $genericAlerts = @(Get-PagedResult -url $genericAlertsUrl)
     Write-ActionInfo "Found $($genericAlerts.Count) generic secret scanning alert$($genericAlerts.Count -eq 1 ? '' : 's') for '$OrganizationName/$RepositoryName'"
 }
 catch {
-    Invoke-EvaluationError -Message "Error getting generic secret scanning alerts for '$OrganizationName/$RepositoryName'. Generic secret scanning alerts that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
     # FailClosed is disabled: still review any generic alerts that were read before the error
+    $genericAlerts = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
+    Invoke-EvaluationError -Message "Error getting generic secret scanning alerts for '$OrganizationName/$RepositoryName'. Generic secret scanning alerts that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
 }
 
 # Merge alerts and deduplicate by alert number
@@ -340,16 +336,33 @@ foreach ($genericAlert in $genericAlerts) {
 }
 Write-ActionInfo "Found $($alerts.Count) total secret scanning alert$($alerts.Count -eq 1 ? '' : 's') after merging and deduplication"
 
-# PR issue comments are only needed for 'pull_request_comment' locations; fetched once on first use
+# PR issue comments are only listed for 'pull_request_comment' locations without a usable html_url, once on first use
 $prComments = $null
+$listPrComments = {
+    if ($null -eq $script:prComments) {
+        try {
+            $script:prComments = @(Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl)
+        }
+        catch {
+            # FailClosed is disabled: still review any comments that were read before the error
+            $script:prComments = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
+            # This script block's output is used as the comment list, so send the workflow command to the host
+            Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' PR#$PullRequestNumber. Secrets in PR comments that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)" | Out-Host
+        }
+    }
+    return $script:prComments
+}
 
 #for each secret scanning alert, find the initial location of the secret and theh list
 $alertCount = 0
 $alertsInitiatedFromPr = @()
 foreach ($alert in $alerts) {
-    # Skip alerts that don't have required properties - we need location data to determine if it matches the PR
-    if ($null -eq $alert -or [String]::IsNullOrWhiteSpace($alert.locations_url)) {
-        Write-ActionDebug "Skipping alert without location data (number: $($alert.number), alert_type: $($alert.secret_type_display_name), locations_url: '$($alert.locations_url)')"
+    # Use the alert's locations_url, or the URL built from its number when it is missing. An alert with neither cannot
+    # be reviewed, so it is reported as an evaluation error rather than skipped (a skipped alert would make an
+    # incomplete review look complete).
+    $alertLocationsUrl = Get-AlertLocationsUrl -alert $alert -owner $OrganizationName -repo $RepositoryName -apiBaseUrl $ApiBaseUrl
+    if (-not $alertLocationsUrl) {
+        Invoke-EvaluationError -Message "A '$OrganizationName/$RepositoryName' secret scanning alert without a number or locations_url could not be reviewed."
         continue
     }
 
@@ -359,22 +372,17 @@ foreach ($alert in $alerts) {
     - returns: 1 "location" object per file where secret detected
     - note: details.commit_sha - SHA of the commit where the secret was detected
     #>
-    $repoAlertLocationUrl = [uri]"$($alert.locations_url)?per_page=$perPage"
+    $repoAlertLocationUrl = [uri]"$($alertLocationsUrl)?per_page=$perPage"
     $locations = @()
     try {
-        $locationsResult = Invoke-GHRestMethod -Method GET -Uri $repoAlertLocationUrl.AbsoluteUri -ExtendedResult $true
-        $locations = $locationsResult.result
-        # Get the next page of secret scanning alert locations if there is one
-        while ($locationsResult.nextLink) {
-            $locationsResult = Invoke-GHRestMethod -Method GET -Uri $locationsResult.nextLink -ExtendedResult $true
-            $locations += $locationsResult.result
-        }
+        $locations = @(Get-PagedResult -url $repoAlertLocationUrl.AbsoluteUri)
         Write-ActionDebug "Found $($locations.Count) secret scanning alert locations for alert #$($alert.number)"
     }
     catch {
-        Write-ActionDebug "Alert number: $($alert.number), locations_url: '$($alert.locations_url)'"
-        Invoke-EvaluationError -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert #$($alert.number) locations.  Ensure the 'token' input has proper permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
         # FailClosed is disabled: still review any location pages that were read before the error
+        $locations = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
+        Write-ActionDebug "Alert number: $($alert.number), locations_url: '$alertLocationsUrl'"
+        Invoke-EvaluationError -Message "Error getting '$OrganizationName/$RepositoryName' secret scanning alert #$($alert.number) locations.  Ensure the 'token' input has proper permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
     }
 
     $locationMatches = @()
@@ -403,24 +411,12 @@ foreach ($alert in $alerts) {
                 }
             }
             'pull_request_comment' {
-                if ($null -eq $prComments) {
-                    try {
-                        $prComments = @(Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl)
-                    }
-                    catch {
-                        # FailClosed is disabled: still review any comments that were read before the error
-                        $prComments = @($_.Exception.Data['PartialResult'] | Where-Object { $null -ne $_ })
-                        Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' PR#$PullRequestNumber. Secrets in PR comments that could not be read are not reviewed. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
-                    }
-                }
-                # Extract comment ID from the URL (last segment of the path)
-                $commentId = Get-IdFromUrl -url $location.details.pull_request_comment_url
-                foreach ($comment in $prComments) {
-                    if ($comment.id -eq $commentId) {
-                        Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR comment."
-                        $matchFound = $true
-                        break
-                    }
+                # The PR number is read from the location's html_url without an API call, so a comment deleted after
+                # detection is still matched to the PR it was posted on. Only when html_url is missing or not in the
+                # expected format are the PR comments listed (once) and the comment looked up by its ID.
+                if (Test-PullRequestCommentInPullRequest -location $location -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -listPullRequestComments $listPrComments) {
+                    Write-ActionDebug "MATCH FOUND: Alert $($alert.number) is in a PR comment."
+                    $matchFound = $true
                 }
             }
             'pull_request_review' {
@@ -563,44 +559,35 @@ if ($alertsInitiatedFromPr.Count -gt 0) {
     $markdownSummary += $markdownSummaryTableRows
 }
 
-# PR Comment Summary only if not disabled and alerts were found
-if (!$DisablePRComment -and $alertsInitiatedFromPr.Count -gt 0) {
-    <# API: GET PR COMMENTS
-    - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment
-    - format: /repos/{owner}/{repo}/issues/{pull_number}/comments
-    #>
-    $commentUrl = "$ApiBaseUrl/repos/$OrganizationName/$RepositoryName/issues/$PullRequestNumber/comments"
-    $commentsRead = $true
-    try {
-        $comments = @(Get-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl)
-    }
-    catch {
-        $commentsRead = $false
-        Invoke-EvaluationError -Message "Error reading comments from '$OrganizationName/$RepositoryName' Pull Request#$PullRequestNumber, skipping PR comment.  Ensure GITHUB_TOKEN has `pull_requests:read` repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
-    }
-
-    if ($commentsRead) {
-        $prCommentWatermark = "<!-- secret-scanning-review-pr-comment-watermark -->"
-        $existingComment = $comments | Where-Object { $_.body -match $prCommentWatermark } | Select-Object -First 1
-        $comment = @{
-            body = "{0}`n{1}{2}`n<!-- {3} -->" -f $prCommentWatermark, $markdownSummary, (Get-EvaluationWarningMarkdown -Warnings $evaluationWarnings), (Get-Date).ToUniversalTime().ToString("o")
-        }
-        try {
-            if ($null -ne $existingComment) {
-                $commentResponse = Invoke-GHRestMethod -Method PATCH -Uri $existingComment.url -Body $($comment | ConvertTo-Json)
-            }
-            else {
-                $commentResponse = Invoke-GHRestMethod -Method POST -Uri $commentUrl -Body $($comment | ConvertTo-Json)
-            }
-            Write-ActionInfo "Updated PR Comment: $($commentResponse.html_url)"
-        }
-        catch {
-            Invoke-EvaluationError -Message "Error adding comment to '$OrganizationName/$RepositoryName' Pull Request#$PullRequestNumber.  Ensure GITHUB_TOKEN has `pull_requests:write` repo permissions. (StatusCode:$($_.Exception.Response.StatusCode.Value__) Message:$($_.Exception.Message)"
-        }
-    }
+# PR Comment Summary, unless disabled:
+#   - alerts were found: create the comment, or update the one from an earlier run
+#   - no alerts were found: only update a comment from an earlier run, so it no longer reports alerts that are gone.
+#     No comment is created, and an incomplete review (errors reported as warnings) leaves the earlier comment unchanged.
+if ($DisablePRComment) {
+    Write-ActionDebug "Skipping PR comment update - DisablePRComment is set to $DisablePRComment"
+}
+elseif ($alertsInitiatedFromPr.Count -eq 0 -and $evaluationWarnings.Count -gt 0) {
+    Write-ActionDebug "Skipping PR comment update - no alerts were found, but the review could not be fully completed"
 }
 else {
-    Write-ActionDebug "Skipping PR comment update - DisablePRComment is set to $DisablePRComment and alertsInitiatedFromPr is $($alertsInitiatedFromPr.Count)"
+    <# API: LIST, UPDATE, or CREATE PR COMMENTS
+    - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments
+    - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#update-an-issue-comment
+    - docs: https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#create-an-issue-comment
+    - format: /repos/{owner}/{repo}/issues/{pull_number}/comments
+    #>
+    try {
+        $commentResponse = Publish-PullRequestComment -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -markdownSummary ($markdownSummary + (Get-EvaluationWarningMarkdown -Warnings $evaluationWarnings)) -createIfMissing ($alertsInitiatedFromPr.Count -gt 0) -apiBaseUrl $ApiBaseUrl
+        if ($null -ne $commentResponse) {
+            Write-ActionInfo "Updated PR Comment: $($commentResponse.html_url)"
+        }
+        else {
+            Write-ActionDebug "Skipping PR comment update - no alerts were found and there is no PR comment from an earlier run to update"
+        }
+    }
+    catch {
+        Invoke-EvaluationError -Message $_.Exception.Message
+    }
 }
 
 # Include any errors that were reported as warnings (FailClosed disabled)
