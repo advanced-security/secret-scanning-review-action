@@ -1041,6 +1041,9 @@ Extracts the pull request number from the GITHUB_REF environment variable.
 Supports both the standard `pull_request` event ref format (refs/pull/:prNumber/merge)
 and the `merge_group` event ref format used by GitHub merge queues
 (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha).
+Both formats are matched from the start of the ref and are case-sensitive, as in the Python runtime, so a
+base branch name that contains 'refs/pull/<n>' does not change the result. The base branch name can contain
+slashes: the pull request number is read from the last '/pr-<n>-' segment.
 Returns $null if the ref does not match either format.
 
 .PARAMETER githubRef
@@ -1059,11 +1062,11 @@ function Get-PullRequestNumberFromRef {
         [string]$githubRef
     )
 
-    if ($githubRef -match 'refs/pull/([0-9]+)') {
+    if ($githubRef -cmatch '^refs/pull/([0-9]+)') {
         return $matches[1]
     }
 
-    if ($githubRef -match 'refs/heads/gh-readonly-queue/.+/pr-([0-9]+)-') {
+    if ($githubRef -cmatch '^refs/heads/gh-readonly-queue/.+/pr-([0-9]+)-') {
         return $matches[1]
     }
 

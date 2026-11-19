@@ -535,6 +535,9 @@ def get_pull_request_number_from_ref(github_ref):
     Supports both the standard 'pull_request' event ref format
     (refs/pull/:prNumber/merge) and the 'merge_group' event ref format used by
     GitHub merge queues (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha).
+    Both formats are matched from the start of the ref (re.match) and are case-sensitive, as in the PowerShell
+    runtime, so a base branch name that contains 'refs/pull/<n>' does not change the result. The base branch name
+    can contain slashes: the pull request number is read from the last '/pr-<n>-' segment.
     Returns None if the ref does not match either format.
     """
     match = re.match(r'refs/pull/([0-9]+)', github_ref)

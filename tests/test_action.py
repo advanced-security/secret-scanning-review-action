@@ -883,21 +883,20 @@ class TestMainFailClosed:
 
 
 class TestGetPullRequestNumberFromRef:
-    """Tests for get_pull_request_number_from_ref."""
+    """Tests for get_pull_request_number_from_ref.
 
-    def test_pull_request_event_ref(self):
-        assert action.get_pull_request_number_from_ref("refs/pull/120/merge") == "120"
+    Same cases as Get-PullRequestNumberFromRef in tests/Action_tests.ps1, so both runtimes read the same number.
+    """
 
-    def test_merge_group_event_ref(self):
-        ref = "refs/heads/gh-readonly-queue/main/pr-120-abcdef1234567890abcdef1234567890abcdef12"
-        assert action.get_pull_request_number_from_ref(ref) == "120"
-
-    def test_merge_group_event_ref_with_slash_in_base_branch(self):
-        ref = "refs/heads/gh-readonly-queue/releases/1.0/pr-42-abcdef1234567890abcdef1234567890abcdef12"
-        assert action.get_pull_request_number_from_ref(ref) == "42"
-
-    def test_returns_none_for_unrecognized_ref(self):
-        assert action.get_pull_request_number_from_ref("refs/heads/main") is None
-
-    def test_returns_none_for_empty_ref(self):
-        assert action.get_pull_request_number_from_ref("") is None
+    @pytest.mark.parametrize("github_ref,expected", [
+        ("refs/pull/120/merge", "120"),
+        ("refs/heads/gh-readonly-queue/main/pr-120-abcdef1234567890abcdef1234567890abcdef12", "120"),
+        ("refs/heads/gh-readonly-queue/releases/1.0/pr-42-abcdef1234567890abcdef1234567890abcdef12", "42"),
+        ("refs/heads/gh-readonly-queue/release/refs/pull/7/pr-120-abcdef1234567890abcdef1234567890abcdef12", "120"),
+        ("refs/heads/release/refs/pull/7/merge", None),
+        ("REFS/PULL/120/MERGE", None),
+        ("refs/heads/main", None),
+        ("", None),
+    ])
+    def test_parses_ref(self, github_ref, expected):
+        assert action.get_pull_request_number_from_ref(github_ref) == expected
