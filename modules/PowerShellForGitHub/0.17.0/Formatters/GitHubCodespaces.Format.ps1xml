@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Configuration>
+  <ViewDefinitions>
+    <!--================== GitHub.Codespace Type View =================-->
+    <View>
+      <Name>GitHub.Codespace</Name>
+      <ViewSelectedBy>
+        <TypeName>GitHub.Codespace</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem>
+                <PropertyName>id</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>name</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>display_name</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>state</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>created_at</PropertyName>
+              </TableColumnItem>
+              <TableColumnItem>
+                <PropertyName>updated_at</PropertyName>
+              </TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+  </ViewDefinitions>
+</Configuration>

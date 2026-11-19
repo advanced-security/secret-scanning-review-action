@@ -1,0 +1,100 @@
+#
+# Continuous Integration (CI)
+# This pipeline validates the module for Static Analysis and Unit Test issues.
+#
+
+# ---------------------------------------------------------
+# REQUIRED: These variables MUST be set within the pipeline
+# * GitHubAccessToken      - {secret} The access token with sufficient permissions to modify the
+#                            accounts specified by GitHubOwnerName and GitHubOrganizatioName.
+# * GitHubOwnerName        - The default "owner" that will be used for tests.
+# * GitHubOrganizationName - The default "organization" that will be used for tests.
+# ---------------------------------------------------------
+
+trigger:
+- master
+
+# Intentionally not having the PR trigger, as we want to kick off PR validation manually after code inspection
+#pr:
+#- master
+
+jobs:
+- job: waitForRunningBuilds
+  displayName: 'Wait for Running Builds'
+  pool:
+    vmImage: 'windows-latest'
+  timeoutInMinutes: 360
+  continueOnError: true
+  steps:
+  - template: ./templates/wait-runningBuild.yaml
+    parameters:
+      buildQueryPersonalAccessToken: $(BuildQueryPersonalAccessToken)
+
+- job: windowsWPS
+  displayName: 'Windows [Windows PowerShell]'
+  pool:
+    vmImage: 'windows-latest'
+  dependsOn: waitForRunningBuilds
+  timeoutInMinutes: 240
+  steps:
+  - template: ./templates/verify-testConfigSettingsHash.yaml
+    parameters:
+      usePowerShellCore: false
+  - template: ./templates/run-staticAnalysis.yaml
+    parameters:
+      usePowerShellCore: false
+  - template: ./templates/run-unitTests.yaml
+    parameters:
+      gitHubAccessToken: $(WindowsPS5CIGitHubAccessToken)
+      gitHubOwnerName: $(WindowsPS5CIGitHubOwnerName)
+      gitHubOrganizationName: $(WindowsPS5CIGitHubOrganizationName)
+      platformName: 'Windows'
+      usePowerShellCore: false
+
+- job: windows
+  displayName: 'Windows [PowerShell Core]'
+  pool:
+    vmImage: 'windows-latest'
+  dependsOn: waitForRunningBuilds
+  timeoutInMinutes: 240
+  steps:
+  - template: ./templates/verify-testConfigSettingsHash.yaml
+  - template: ./templates/run-staticAnalysis.yaml
+  - template: ./templates/run-unitTests.yaml
+    parameters:
+      gitHubAccessToken: $(WindowsCIGitHubAccessToken)
+      gitHubOwnerName: $(WindowsCIGitHubOwnerName)
+      gitHubOrganizationName: $(WindowsCIGitHubOrganizationName)
+      platformName: 'Windows'
+
+- job: linux
+  displayName: 'Linux [PowerShell Core]'
+  pool:
+    vmImage: 'ubuntu-latest'
+  dependsOn: waitForRunningBuilds
+  timeoutInMinutes: 240
+  steps:
+  - template: ./templates/verify-testConfigSettingsHash.yaml
+  - template: ./templates/run-staticAnalysis.yaml
+  - template: ./templates/run-unitTests.yaml
+    parameters:
+      gitHubAccessToken: $(LinuxCIGitHubAccessToken)
+      gitHubOwnerName: $(LinuxCIGitHubOwnerName)
+      gitHubOrganizationName: $(LinuxCIGitHubOrganizationName)
+      platformName: 'Linux'
+
+- job: macOS
+  displayName: 'macOS [PowerShell Core]'
+  pool:
+    vmImage: 'macOS-latest'
+  dependsOn: waitForRunningBuilds
+  timeoutInMinutes: 240
+  steps:
+  - template: ./templates/verify-testConfigSettingsHash.yaml
+  - template: ./templates/run-staticAnalysis.yaml
+  - template: ./templates/run-unitTests.yaml
+    parameters:
+      gitHubAccessToken: $(MacCIGitHubAccessToken)
+      gitHubOwnerName: $(MacCIGitHubOwnerName)
+      gitHubOrganizationName: $(MacCIGitHubOrganizationName)
+      platformName: 'macOS'

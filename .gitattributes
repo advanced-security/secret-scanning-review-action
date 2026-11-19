@@ -1,0 +1,3 @@
+# Vendored PowerShell modules must keep the exact bytes from their packages on every platform
+# (scripts/Sync-VendoredModules.ps1 -Check compares them against requirements.lock.psd1).
+modules/** -text
