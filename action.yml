@@ -118,6 +118,8 @@ runs:
           INPUT_SKIP_CLOSED_ALERTS: ${{ inputs.skip-closed-alerts || inputs.python-skip-closed-alerts }}
           INPUT_DISABLE_WORKFLOW_SUMMARY: ${{ inputs.disable-workflow-summary || inputs.python-disable-workflow-summary }}
           INPUT_FAIL_CLOSED: ${{ inputs.fail-closed }}
+          # Use UTF-8 for file I/O and stdout on every OS (Python on Windows otherwise defaults to cp1252, which cannot encode the summary emoji)
+          PYTHONUTF8: '1'
 branding:
   icon: "lock"
   color: "gray-dark"

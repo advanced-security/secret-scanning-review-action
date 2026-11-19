@@ -91,13 +91,13 @@ def complete_incomplete_review(pull_request_number, pull_request, warnings, disa
     if disable_workflow_summary:
         print(f"Skipping workflow summary - disable-workflow-summary is set to {disable_workflow_summary}")
     elif github_step_summary:
-        with open(github_step_summary, 'w') as summary_file:
+        with open(github_step_summary, 'w', encoding='utf-8') as summary_file:
             summary_file.write(
                 f"# :unlock: {pr_link} SECRET SCANNING REVIEW SUMMARY :unlock: \n {incomplete_summary} \n"
                 f"{get_evaluation_warning_markdown(warnings)}"
             )
     if "GITHUB_OUTPUT" in os.environ:
-        with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
             f.write("alerts=[]\n")
     print(f"::warning::{escape_command_data(incomplete_summary)}")
     sys.exit(0)
@@ -770,14 +770,14 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
         github_step_summary = os.environ.get('GITHUB_STEP_SUMMARY')
         
         if github_step_summary:
-            with open(github_step_summary, 'w') as summary_file:
+            with open(github_step_summary, 'w', encoding='utf-8') as summary_file:
                 summary_file.write(markdown_summary)
             
             # Log the path of the GITHUB_STEP_SUMMARY file
             print(f"Markdown Summary from env var GITHUB_STEP_SUMMARY: '{github_step_summary}'")
             
             # Read and log the content of the GITHUB_STEP_SUMMARY file
-            with open(github_step_summary, 'r') as summary_file:
+            with open(github_step_summary, 'r', encoding='utf-8') as summary_file:
                 content = summary_file.read()
                 print(content)
         else:
@@ -803,7 +803,7 @@ def main(github_token, fail_on_alert, fail_on_alert_exclude_closed, disable_pr_c
     step_output_json = json.dumps(step_output)
     
     if "GITHUB_OUTPUT" in os.environ :
-        with open(os.environ["GITHUB_OUTPUT"], "a") as f :
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f :
             f.write(f"alerts={step_output_json}\n")
 
     # Output Message Summary and set exit code
