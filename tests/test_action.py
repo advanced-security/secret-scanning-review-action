@@ -237,11 +237,24 @@ class TestApiBaseUrl:
         reloaded_action = self._reload_action()
         assert reloaded_action.API_BASE_URL == "https://ghes.example.com/api/v3"
 
+    @pytest.mark.parametrize("env,expected", [
+        ({"GITHUB_API_URL": "https://api.github.com"}, "https://api.github.com/graphql"),
+        ({"GITHUB_API_URL": "https://ghes.example.com/api/v3"}, "https://ghes.example.com/api/graphql"),
+        ({"GITHUB_API_URL": "https://ghes.example.com/api/v3", "GITHUB_GRAPHQL_URL": "https://graphql.example.com/api/graphql/"}, "https://graphql.example.com/api/graphql"),
+    ], ids=["github.com", "GHES derived", "GITHUB_GRAPHQL_URL"])
+    def test_graphql_url(self, env, expected):
+        with patch.dict(os.environ, env):
+            if "GITHUB_GRAPHQL_URL" not in env:
+                os.environ.pop("GITHUB_GRAPHQL_URL", None)
+            reloaded_action = self._reload_action()
+        assert reloaded_action.GRAPHQL_URL == expected
+
 
 @pytest.fixture
 def github_com_api(monkeypatch):
-    """Pin API_BASE_URL to github.com (other tests reload the module with different hosts)."""
+    """Pin API_BASE_URL and GRAPHQL_URL to github.com (other tests reload the module with different hosts)."""
     monkeypatch.setattr(action, "API_BASE_URL", "https://api.github.com")
+    monkeypatch.setattr(action, "GRAPHQL_URL", "https://api.github.com/graphql")
 
 
 @pytest.fixture
@@ -881,6 +894,85 @@ class TestMainFailClosed:
         assert "⚠️ Secret scanning review for PR#1 could not be completed" in summary.read_text(encoding="utf-8")
         assert "alerts=[]" in output.read_text(encoding="utf-8")
 
+    MERGE_GROUP_REF = "refs/heads/gh-readonly-queue/main/pr-1-abcdef1234567890abcdef1234567890abcdef12"
+
+    @pytest.fixture
+    def merge_group_env(self, env, monkeypatch):
+        monkeypatch.setenv("GITHUB_REF", self.MERGE_GROUP_REF)
+        return env
+
+    @patch("action.get_merge_queue_grouping_strategy")
+    @patch("action.get_secret_scanning_alerts_for_repo", return_value=[])
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    def test_pull_request_event_does_not_read_merge_queue_settings(self, mock_pr, _shas, _alerts, mock_strategy, env):
+        mock_pr.return_value = self._pr()
+
+        assert self._run(True) == 0
+        mock_strategy.assert_not_called()
+
+    @patch("action.get_pull_request")
+    @patch("action.get_merge_queue_grouping_strategy", return_value={"strategy": "HEADGREEN", "source": "ruleset", "reason": None})
+    def test_headgreen_merge_queue_fails_when_fail_closed(self, _strategy, mock_pr, merge_group_env, capsys):
+        assert self._run(True) == 1
+        assert "::error::Merge queue for 'main' has 'Require all queue entries to pass required checks' turned off in its ruleset" in capsys.readouterr().out
+        mock_pr.assert_not_called()
+
+    @patch("action.get_pull_request")
+    @patch("action.get_merge_queue_grouping_strategy", return_value={"strategy": "HEADGREEN", "source": "ruleset", "reason": None})
+    def test_headgreen_merge_queue_reports_incomplete_review_when_not_fail_closed(self, _strategy, mock_pr, merge_group_env, capsys):
+        summary, output = merge_group_env
+
+        assert self._run(False) == 0
+        assert "::warning::Merge queue for 'main' has 'Require all queue entries to pass required checks' turned off" in capsys.readouterr().out
+        text = summary.read_text(encoding="utf-8")
+        assert "Secret scanning review for PR#1 could not be completed" in text
+        assert "(grouping strategy HEADGREEN)" in text
+        assert "alerts=[]" in output.read_text()
+        mock_pr.assert_not_called()
+
+    @patch("action.get_dismissal_request_for_alert", return_value=None)
+    @patch("action.get_locations_for_alert")
+    @patch("action.get_secret_scanning_alerts_for_repo")
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    @patch("action.get_merge_queue_grouping_strategy", return_value={"strategy": "ALLGREEN", "source": "branch protection rule", "reason": None})
+    def test_allgreen_merge_queue_reviews_the_pull_request(self, mock_strategy, mock_pr, _shas, mock_alerts, mock_locations, _dismissal, merge_group_env):
+        mock_pr.return_value = self._pr()
+        mock_alerts.side_effect = [[_alert()], []]
+        mock_locations.return_value = [{"type": "commit", "details": {"commit_sha": "abc", "path": "a.txt", "start_line": 1, "start_column": 1}}]
+
+        assert self._run(True, fail_on_alert=True) == 1
+        assert mock_strategy.call_args[0][3] == "main"
+
+    @patch("action.get_secret_scanning_alerts_for_repo", return_value=[])
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    @patch("action.get_merge_queue_grouping_strategy", return_value={"strategy": None, "source": None, "reason": "the token cannot read its settings"})
+    def test_unreadable_merge_queue_setting_writes_notice_and_reviews(self, _strategy, mock_pr, _shas, _alerts, merge_group_env, capsys):
+        summary, _ = merge_group_env
+        mock_pr.return_value = self._pr()
+
+        assert self._run(True) == 0
+        assert "::notice::Could not verify that the merge queue for 'main' requires each pull request to pass its own required checks: the token cannot read its settings." in capsys.readouterr().out
+        assert "could not be fully completed" not in summary.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize("fail_closed,expected_exit", [(True, 1), (False, 0)])
+    @patch("action.get_secret_scanning_alerts_for_repo", return_value=[])
+    @patch("action.get_commit_shas_for_pr", return_value=["abc"])
+    @patch("action.get_pull_request")
+    @patch("action.get_merge_queue_grouping_strategy")
+    def test_merge_queue_settings_error_follows_fail_closed(self, mock_strategy, mock_pr, _shas, _alerts, fail_closed, expected_exit, merge_group_env):
+        summary, _ = merge_group_env
+        mock_strategy.side_effect = action.EvaluationError("Error reading the rulesets that apply to 'owner/repo' branch 'main'", 500)
+        mock_pr.return_value = self._pr()
+
+        assert self._run(fail_closed) == expected_exit
+        if fail_closed:
+            mock_pr.assert_not_called()
+        else:
+            assert "Error reading the rulesets that apply to 'owner/repo' branch 'main'" in summary.read_text(encoding="utf-8")
+
 
 class TestGetPullRequestNumberFromRef:
     """Tests for get_pull_request_number_from_ref.
@@ -900,3 +992,135 @@ class TestGetPullRequestNumberFromRef:
     ])
     def test_parses_ref(self, github_ref, expected):
         assert action.get_pull_request_number_from_ref(github_ref) == expected
+
+
+class TestGetMergeGroupBaseBranchFromRef:
+    """Tests for get_merge_group_base_branch_from_ref (same cases as tests/Action_tests.ps1)."""
+
+    @pytest.mark.parametrize("github_ref,expected", [
+        ("refs/heads/gh-readonly-queue/main/pr-120-abcdef1234567890abcdef1234567890abcdef12", "main"),
+        ("refs/heads/gh-readonly-queue/releases/1.0/pr-42-abcdef1234567890abcdef1234567890abcdef12", "releases/1.0"),
+        ("refs/heads/gh-readonly-queue/release/refs/pull/7/pr-120-abcdef1234567890abcdef1234567890abcdef12", "release/refs/pull/7"),
+        ("refs/pull/120/merge", None),
+        ("", None),
+    ])
+    def test_parses_ref(self, github_ref, expected):
+        assert action.get_merge_group_base_branch_from_ref(github_ref) == expected
+
+
+def _rules_response(*strategies):
+    """A get rules for a branch response with a pull_request rule and a merge_queue rule per grouping strategy."""
+    rules = [{"type": "pull_request", "parameters": {}}]
+    rules += [{"type": "merge_queue", "parameters": {"grouping_strategy": strategy}} for strategy in strategies]
+    resp = _mock_response(rules)
+    resp.headers = {}
+    return resp
+
+
+def _graphql_response(body):
+    resp = _mock_response(body)
+    resp.headers = {}
+    return resp
+
+
+def _http_error_response(status_code):
+    resp = _mock_response({}, status_code)
+    resp.raise_for_status.side_effect = requests.HTTPError(f"{status_code} Error", response=resp)
+    return resp
+
+
+class TestGetMergeQueueGroupingStrategy:
+    """Tests for get_merge_queue_grouping_strategy (same cases as tests/Action_tests.ps1)."""
+
+    @staticmethod
+    def _get(branch="main"):
+        return action.get_merge_queue_grouping_strategy("token", "o", "r", branch, None, None, True)
+
+    @pytest.mark.parametrize("strategy", ["ALLGREEN", "HEADGREEN"])
+    @patch("action.requests.post")
+    @patch("action.requests.get")
+    def test_reads_ruleset_setting_without_graphql_call(self, mock_get, mock_post, strategy, github_com_api):
+        mock_get.return_value = _rules_response(strategy)
+
+        result = self._get("release/1.0")
+
+        assert result == {"strategy": strategy, "source": "ruleset", "reason": None}
+        assert mock_get.call_args[0][0] == "https://api.github.com/repos/o/r/rules/branches/release%2F1.0?per_page=100&page=1"
+        mock_post.assert_not_called()
+
+    @patch("action.requests.get")
+    def test_returns_headgreen_when_any_ruleset_turns_the_setting_off(self, mock_get, github_com_api):
+        mock_get.return_value = _rules_response("ALLGREEN", "HEADGREEN")
+        assert self._get()["strategy"] == "HEADGREEN"
+
+    @pytest.mark.parametrize("strategy", ["ALLGREEN", "HEADGREEN"])
+    @patch("action.requests.post")
+    @patch("action.requests.get")
+    def test_reads_branch_protection_rule_setting_from_graphql(self, mock_get, mock_post, strategy, github_com_api, monkeypatch):
+        monkeypatch.setattr(action, "GRAPHQL_URL", "https://ghes.example.com/api/graphql")
+        mock_get.return_value = _rules_response()
+        mock_post.return_value = _graphql_response({"data": {"repository": {"mergeQueue": {"configuration": {"mergingStrategy": strategy}}}}})
+
+        result = self._get()
+
+        assert result == {"strategy": strategy, "source": "branch protection rule", "reason": None}
+        assert mock_post.call_args[0][0] == "https://ghes.example.com/api/graphql"
+        assert mock_post.call_args[1]["json"]["variables"] == {"owner": "o", "repo": "r", "branch": "main"}
+
+    @pytest.mark.parametrize("body,reason", [
+        ({"data": {"repository": {"mergeQueue": {"configuration": None}}}}, "the token cannot read its settings"),
+        ({"data": {"repository": {"mergeQueue": None}}, "errors": [{"type": "FORBIDDEN", "message": "Resource not accessible by personal access token"}]},
+         "the token cannot read its settings (Resource not accessible by personal access token)"),
+        ({"data": {"repository": {"mergeQueue": None}}}, "no merge queue was found for the branch"),
+    ], ids=["no configuration", "FORBIDDEN error", "no merge queue"])
+    @patch("action.requests.post")
+    @patch("action.requests.get")
+    def test_reports_that_the_setting_cannot_be_read(self, mock_get, mock_post, body, reason, github_com_api):
+        mock_get.return_value = _rules_response()
+        mock_post.return_value = _graphql_response(body)
+
+        assert self._get() == {"strategy": None, "source": None, "reason": reason}
+
+    @pytest.mark.parametrize("rules,graphql,expected", [
+        (_http_error_response(500), None, "Error reading the rulesets that apply to 'o/r' branch 'main', so its merge queue settings could not be verified. (StatusCode:500"),
+        (None, _http_error_response(502), "Error reading the merge queue settings for 'o/r' branch 'main'. (StatusCode:502"),
+        (None, _graphql_response({"data": None, "errors": [{"type": "INTERNAL", "message": "Something went wrong"}]}), "(GraphQL errors: Something went wrong)"),
+    ], ids=["rulesets cannot be read", "GraphQL request fails", "other GraphQL error"])
+    @patch("action.requests.post")
+    @patch("action.requests.get")
+    def test_raises_evaluation_error(self, mock_get, mock_post, rules, graphql, expected, github_com_api):
+        mock_get.return_value = rules or _rules_response()
+        mock_post.return_value = graphql
+
+        with pytest.raises(action.EvaluationError) as exc:
+            self._get()
+        assert expected in str(exc.value)
+
+
+class TestGetMergeGroupReviewCoverage:
+    """Tests for get_merge_group_review_coverage (same cases as tests/Action_tests.ps1)."""
+
+    MERGE_GROUP_REF = "refs/heads/gh-readonly-queue/release/refs/pull/7/pr-120-abcdef1234567890abcdef1234567890abcdef12"
+
+    @patch("action.get_merge_queue_grouping_strategy")
+    def test_returns_none_without_api_call_for_pull_request_ref(self, mock_strategy):
+        assert action.get_merge_group_review_coverage("token", "o", "r", "refs/pull/120/merge", "120", None, None, True) is None
+        mock_strategy.assert_not_called()
+
+    @pytest.mark.parametrize("grouping,status,expected", [
+        ({"strategy": "ALLGREEN", "source": "ruleset", "reason": None}, "covered",
+         "Merge queue for 'release/refs/pull/7' has 'Require all queue entries to pass required checks' turned on in its ruleset, so each pull request ahead of PR#120 in this merge group must pass its own merge group checks to merge."),
+        ({"strategy": "HEADGREEN", "source": "branch protection rule", "reason": None}, "not_covered",
+         "Merge queue for 'release/refs/pull/7' has 'Only merge non-failing pull requests' turned off in its branch protection rule (grouping strategy HEADGREEN), so a merge group merges all of its pull requests when the checks for the last one pass. This action only reviews that last pull request (PR#120), so secrets in the pull requests ahead of it in the group could be merged. Turn on 'Only merge non-failing pull requests' for the merge queue of 'release/refs/pull/7'."),
+        ({"strategy": None, "source": None, "reason": "the token cannot read its settings"}, "unverified",
+         "Could not verify that the merge queue for 'release/refs/pull/7' requires each pull request to pass its own required checks: the token cannot read its settings. This action only reviews PR#120, "),
+    ], ids=["on in a ruleset", "off in a branch protection rule", "not readable"])
+    @patch("action.get_merge_queue_grouping_strategy")
+    def test_returns_status_and_message(self, mock_strategy, grouping, status, expected):
+        mock_strategy.return_value = grouping
+
+        result = action.get_merge_group_review_coverage("token", "o", "r", self.MERGE_GROUP_REF, "120", None, None, True)
+
+        assert result["status"] == status
+        assert result["message"].startswith(expected)
+        assert mock_strategy.call_args[0][3] == "release/refs/pull/7"

@@ -54,6 +54,10 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         are the PR comments listed to look up the comment.
         Dismissal request lookups are informational only and never fail the workflow.
         Configuration errors (missing token, event other than pull_request or merge_group) always fail the workflow.
+        On merge_group events, the merge queue settings of the base branch are read first (see NOTES). A merge queue
+        that does not require each pull request to pass its own required checks (grouping strategy HEADGREEN) fails
+        the workflow when true, and ends the review as incomplete (exit code 0) when false. An error reading the
+        settings fails the workflow when true, and is reported as a warning when false.
         Default is true.
 
 .PARAMETER DisablePRComment
@@ -84,6 +88,14 @@ Features
         - options: https://github.com/ebekker/pwsh-github-action-tools/blob/master/docs/GitHubActions/README.md
     - PR File Annotations - https://github.com/actions/toolkit/tree/main/packages/core#annotations
         - warning message - https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-a-warning-message
+
+Merge queues
+    - A merge group ref (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha) only names the last pull request in
+      the group, which is the one reviewed. The pull requests ahead of it are only covered when the merge queue requires
+      each pull request to pass its own required checks (grouping strategy ALLGREEN).
+    - The grouping strategy is read from the rulesets that apply to the base branch (REST, metadata permission), then
+      from GraphQL (repository.mergeQueue) for a merge queue required by a branch protection rule. When the token cannot
+      read it, a notice is written and the review continues. See Get-MergeGroupReviewCoverage in ActionHelpers.psm1.
 
 ToDo List
    - filter out alerts that are before the first commit of the PR
@@ -179,6 +191,11 @@ $RepositoryName = $actionRepo.Repo
 $ApiBaseUrl = if ([String]::IsNullOrWhiteSpace($env:GITHUB_API_URL)) { 'https://api.github.com' } else { $env:GITHUB_API_URL.TrimEnd('/') }
 Write-ActionDebug "Using GitHub API base URL: $ApiBaseUrl"
 
+# Resolve the GitHub GraphQL API URL, only used to read merge queue settings for merge group runs. GITHUB_GRAPHQL_URL is
+# set by the runner (https://api.github.com/graphql, https://api.<tenant>.ghe.com/graphql, or
+# https://<hostname>/api/graphql on GHES). For local/manual runs it is derived from the API base URL.
+$GraphQlUrl = if (-not [String]::IsNullOrWhiteSpace($env:GITHUB_GRAPHQL_URL)) { $env:GITHUB_GRAPHQL_URL.TrimEnd('/') } elseif ($ApiBaseUrl -match '/api/v3$') { $ApiBaseUrl -replace '/api/v3$', '/api/graphql' } else { "$ApiBaseUrl/graphql" }
+
 #get the pull request number from the GITHUB_REF environment variable
 #supports both the 'pull_request' event (refs/pull/:prNumber/merge) and the 'merge_group' event
 #used by merge queues (refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha)
@@ -229,6 +246,24 @@ function Invoke-EvaluationError {
     if ($Fatal) {
         Complete-IncompleteReview
     }
+}
+
+# Merge queues: a merge group contains the base branch and every pull request ahead of it in the queue, but its ref only
+# names the last pull request, which is the one reviewed. That covers the group only when the merge queue requires each
+# pull request to pass its own required checks (grouping strategy ALLGREEN). When it does not (HEADGREEN), the review
+# cannot be completed. When the setting cannot be read with the token, a notice is written and the review continues.
+# No API call is made for pull_request events.
+try {
+    $mergeGroupCoverage = Get-MergeGroupReviewCoverage -githubRef $env:GITHUB_REF -owner $OrganizationName -repo $RepositoryName -pullNumber $PullRequestNumber -apiBaseUrl $ApiBaseUrl -graphQlUrl $GraphQlUrl
+}
+catch {
+    $mergeGroupCoverage = $null
+    Invoke-EvaluationError -Message $_.Exception.Message
+}
+switch ($mergeGroupCoverage.Status) {
+    'Covered' { Write-ActionInfo $mergeGroupCoverage.Message }
+    'Unverified' { Write-ActionNotice -Message $mergeGroupCoverage.Message }
+    'NotCovered' { Invoke-EvaluationError -Fatal -Message $mergeGroupCoverage.Message }
 }
 
 <# API: GET PR

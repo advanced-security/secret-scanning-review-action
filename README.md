@@ -98,7 +98,7 @@ The Action keeps a single comment on the pull request and updates it on later ru
 | `runtime` | No | Runtime to use for the action. Options: `powershell` or `python`. | `powershell` |
 | `skip-closed-alerts` | No | Only process open alerts. | `false` |
 | `disable-workflow-summary` | No | Disable the workflow summary markdown table output. | `false` |
-| `fail-closed` | No | Fail the workflow when a GitHub API error prevents a complete review (for example, the pull request, its commits, alerts, alert locations, or PR comments could not be read). When `false`, these errors are reported as warnings and listed in the workflow summary (and in the PR comment, when one is posted), and the review continues with the data that could be read. See [Handling API errors](#handling-api-errors). | `true` |
+| `fail-closed` | No | Fail the workflow when a GitHub API error prevents a complete review (for example, the pull request, its commits, alerts, alert locations, or PR comments could not be read), or when a merge queue does not require each pull request to pass its own required checks (see [merge queues](#does-this-action-support-merge-queues)). When `false`, these errors are reported as warnings and listed in the workflow summary (and in the PR comment, when one is posted), and the review continues with the data that could be read. See [Handling API errors](#handling-api-errors). | `true` |
 | `python-http-proxy-url` | No | HTTP proxy URL for the python runtime. Example: `http://proxy.example.com:1234` | `""` |
 | `python-https-proxy-url` | No | HTTPS proxy URL for the python runtime. Example: `http://proxy.example.com:5678` | `""` |
 | `python-verify-ssl` | No | Enable/disable SSL verification for the python runtime. ⚠️ Disabling is NOT recommended for production. | `true` |
@@ -117,6 +117,8 @@ Both runtimes handle GitHub API errors the same way, controlled by `fail-closed`
 
 - **`fail-closed: true` (default)**: any API error that prevents a complete review fails the workflow. Use this when the action is a required status check, so an incomplete review never reports success.
 - **`fail-closed: false`**: API errors are reported as `warning` annotations and listed in the workflow summary, and the step does not fail because of them. Warnings are only included in the PR comment when matching alerts are found: when none are found, an incomplete review leaves a PR comment from an earlier run unchanged. Alerts that could still be evaluated are reported as usual, and `fail-on-alert` still fails the workflow when a matching alert is found. If a required lookup fails (the pull request, its commits, or the secret scanning alerts), the review ends early with an "incomplete" workflow summary, an empty `alerts` array (`[]`), and no PR comment.
+
+On `merge_group` events, a merge queue that does not require each pull request to pass its own required checks also prevents a complete review: it fails the workflow with `fail-closed: true`, and ends the review early as incomplete with `fail-closed: false`. An error reading that setting is handled like the other API errors. See [Does this action support merge queues?](#does-this-action-support-merge-queues).
 
 Regardless of `fail-closed`:
 
@@ -143,6 +145,8 @@ The `token` input requires a GitHub Access Token with the following permissions:
 - **Read-Only**: [Contents](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-contents) _(recommended: required for showing dismissal request status in the summary table, and for reviewing pull requests with more than 250 commits, which are read from the [compare](https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#compare-two-commits) endpoint. Without it, those pull requests fail the review, or are reported as incomplete when `fail-closed: false`)_
 - **Write**: [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests)
   - If `disable-pr-comment: true`, only **Read-Only** [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests) is required (not required for public repositories)
+
+On `merge_group` events, the action also reads the merge queue settings of the base branch. This does not need any additional permissions: see [how the setting is read](#how-the-setting-is-read).
 
 > [!NOTE]
 > The built-in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) cannot be used due to missing permissions on the `secret-scanning` API. You must generate a token (PAT or GitHub App) with the required permissions, add it as a secret in your repository, and assign the secret to the workflow parameter. See: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
@@ -317,7 +321,8 @@ sequenceDiagram
 
 - Implicit
   - GITHUB_REPOSITORY - The owner / repository name.
-  - GITHUB_REF - The pull request ref. Supports both the `pull_request` event (`refs/pull/:prNumber/merge`) and the `merge_group` event used by [merge queues](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) (`refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha`).
+  - GITHUB_REF - The pull request ref. Supports both the `pull_request` event (`refs/pull/:prNumber/merge`) and the `merge_group` event used by [merge queues](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) (`refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha`). Both formats are matched from the start of the ref. For `merge_group` events, the base branch is also read from it to check the [merge queue settings](#does-this-action-support-merge-queues).
+  - GITHUB_GRAPHQL_URL - The GraphQL API URL of the GitHub instance the workflow runs on. Only used on `merge_group` events, to read the settings of a merge queue required by a branch protection rule. Derived from `GITHUB_API_URL` for local runs.
   - GITHUB_SERVER_URL - The URL of the GitHub instance the workflow runs on. The `powershell` runtime links review comment locations in the summary to the alert location's `html_url`, and uses this URL to build the link when `html_url` is missing (for example, on older GitHub Enterprise Server versions). Defaults to `https://github.com` for local runs.
 
 - Outputs
@@ -326,7 +331,7 @@ sequenceDiagram
 ## Dependencies
 
 - GitHub Dependencies
-  - GitHub [REST APIs](#rest-apis)
+  - GitHub [REST APIs](#rest-apis) and [GraphQL API](#graphql-api)
 
 - Powershell Dependencies (vendored in [`modules/`](modules); nothing is downloaded from the PowerShell Gallery at runtime)
   - Versions are pinned in [`requirements.psd1`](requirements.psd1) (PSResourceGet [`-RequiredResourceFile`](https://learn.microsoft.com/powershell/module/microsoft.powershell.psresourceget/install-psresource) format)
@@ -350,6 +355,9 @@ sequenceDiagram
 - Commits
   - <https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#compare-two-commits> (used when a pull request has more than 250 commits)
 
+- Rules
+  - <https://docs.github.com/en/rest/repos/rules?apiVersion=2022-11-28#get-rules-for-a-branch> (used on `merge_group` events to read the merge queue settings of a ruleset)
+
 - Secret Scanning
   - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository>
   - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert>
@@ -360,16 +368,46 @@ sequenceDiagram
   - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#create-an-issue-comment>
   - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments>
 
+## GraphQL API
+
+- [`repository.mergeQueue`](https://docs.github.com/en/graphql/reference/objects#repository) (`configuration { mergingStrategy }`): used on `merge_group` events to read the settings of a merge queue required by a branch protection rule
+
 ## FAQ
 
 ### Does this action support merge queues?
 
 Yes. In addition to the `pull_request` event, the action supports being triggered by the [`merge_group`](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#merge_group) event used by [merge queues](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue). Add `merge_group` to your workflow's `on:` triggers (see [Example usage](#example-usage)).
 
-The pull request number is parsed from `GITHUB_REF` for both event types, and the action always retrieves the list of commits directly from the pull request via the Pulls API (independent of the ref). This means the "is a secret scanning alert's initial commit part of this PR?" comparison is unaffected by merge queue's synthetic merge commit.
+#### Which pull request is reviewed
 
-> [!NOTE]
-> Merge groups that batch multiple pull requests together do not encode a single pull request number in `GITHUB_REF`, so this scenario is not currently supported.
+A merge queue tests each pull request in a merge group that contains the base branch and every pull request ahead of it in the queue. The merge group ref (`refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha`) only names the last pull request in the group, and that is the pull request the action reviews. Its commits are read directly from the pull request via the Pulls API (independent of the ref), so the "is a secret scanning alert's initial commit part of this PR?" comparison is unaffected by the merge queue's merge commit.
+
+#### Why the merge queue grouping setting matters
+
+The pull requests ahead of the reviewed pull request are only covered when the merge queue requires each pull request to pass its own required checks: **Require all queue entries to pass required checks** in a ruleset, or **Only merge non-failing pull requests** in a branch protection rule (grouping strategy `ALLGREEN`). Each pull request must then pass its own merge group checks, where this action reviewed it, before it can merge. When the setting is off (`HEADGREEN`), a merge group merges all of its pull requests when the checks for the last one pass, so a pull request whose own merge group failed (for example, because this action found a secret) can be merged together with a later pull request that passes.
+
+> [!IMPORTANT]
+> When this action is a required check in a merge queue, keep **Require all queue entries to pass required checks** (ruleset) or **Only merge non-failing pull requests** (branch protection rule) turned on.
+
+#### What the action does on `merge_group` events
+
+Before the review, the action reads this setting for the base branch. Both runtimes behave the same way:
+
+| Setting | Result |
+| ------- | ------ |
+| On (`ALLGREEN`) | The pull request is reviewed as usual. |
+| Off (`HEADGREEN`) | With `fail-closed: true` (default), the workflow fails with an error that explains the setting and how to turn it on. With `fail-closed: false`, a warning is reported and the review ends as incomplete (see [Handling API errors](#handling-api-errors)). |
+| Cannot be read with the token | A `notice` annotation is written and the pull request is reviewed as usual. |
+| Error reading the setting | Handled like other API errors: the workflow fails with `fail-closed: true`; with `fail-closed: false`, a warning is reported and the review continues. |
+
+No API call is made for this on `pull_request` events.
+
+#### How the setting is read
+
+No additional token permissions are required (see [Token Requirements](#token-requirements)):
+
+- **Ruleset**: the `grouping_strategy` of the `merge_queue` rule is read from the [get rules for a branch](https://docs.github.com/en/rest/repos/rules?apiVersion=2022-11-28#get-rules-for-a-branch) REST endpoint. It only needs the [`Metadata` (read)](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-metadata) permission that every token has, so the setting is checked with every supported token. When several rulesets require a merge queue for the branch, the setting is treated as off when any of them turns it off.
+- **Branch protection rule**: that endpoint does not list it, so the setting (`mergingStrategy`) is read from the merge queue configuration in the GraphQL API ([`repository.mergeQueue`](https://docs.github.com/en/graphql/reference/objects#repository)). GitHub only returns it when the token can read the merge queue settings, for example a classic token of a user with write access to the repository. Otherwise, the action writes a notice and reviews the pull request, so make sure the setting stays on.
 
 ### Why are there two runtime options and what's the difference?
 
