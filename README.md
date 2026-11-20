@@ -307,6 +307,7 @@ sequenceDiagram
     - by [@ebekker](https://github.com/ebekker/)
 - Python Dependencies
   - `requests` module
+  - `certifi` 2026.10.18 or later and `urllib3` 2.8.0 or later (used by `requests`), for their security fixes
 
 ## REST APIs
 
