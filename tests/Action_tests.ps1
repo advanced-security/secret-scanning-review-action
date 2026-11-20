@@ -457,3 +457,26 @@ Describe 'Get-AlertDismissalState' {
     }
 
 }
+
+Describe 'action.ps1' {
+    It 'Authenticates and configures PowerShellForGitHub with -SessionOnly, and disables logging first on every run, so nothing is saved in the user profile' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'action.ps1'), [ref]$null, [ref]$null)
+        $calls = @($ast.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.CommandAst] -and
+                    $node.GetCommandName() -in @('Set-GitHubAuthentication', 'Set-GitHubConfiguration')
+                }, $true) | Sort-Object { $_.Extent.StartOffset })
+
+        $calls.Count | Should -BeGreaterThan 0
+        foreach ($call in $calls) {
+            $parameterNames = @($call.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } | ForEach-Object ParameterName)
+            $parameterNames | Should -Contain 'SessionOnly' -Because "'$($call.Extent.Text)' would otherwise save to the user profile"
+        }
+
+        # Logging must be off before authentication and the API calls, which would otherwise be logged
+        $calls[0].GetCommandName() | Should -Be 'Set-GitHubConfiguration'
+        $firstParameterNames = @($calls[0].CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } | ForEach-Object ParameterName)
+        $firstParameterNames | Should -Contain 'DisableLogging' -Because 'PowerShellForGitHub otherwise appends every API URL to PowerShellForGitHub.log in the user profile'
+        [object]::ReferenceEquals($calls[0].Parent.Parent, $ast.EndBlock) | Should -BeTrue -Because "'$($calls[0].Extent.Text)' must be a top-level statement, so it also runs when PowerShellForGitHub was already installed"
+    }
+}
