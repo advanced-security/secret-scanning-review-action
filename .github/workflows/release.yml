@@ -37,7 +37,7 @@ jobs:
 
   release:
     needs: verify-vendored-modules
-    uses: advanced-security/reusable-workflows/.github/workflows/release.yml@102c3d8591c7534b43b302fd05bae1f32cf37985 # v0.3.1
+    uses: advanced-security/reusable-workflows/.github/workflows/release.yml@3dce64cbf4e4b35282a17b8c8bc238ede50a89e7 # v0.3.1
     with:
       version: ${{ inputs.version }}
       bump: ${{ inputs.bump }}
