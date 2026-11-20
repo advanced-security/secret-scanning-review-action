@@ -841,7 +841,7 @@ Describe 'Get-DismissalRequestForAlert' {
     }
 
     It 'Returns null when API returns error response body instead of throwing' {
-        # Invoke-GHRestMethod does not throw on HTTP errors; it returns the error body as a PSObject
+        # A response with a 'message' property is an error body, not a dismissal request
         $errorResponse = @{ message = 'Resource not accessible by personal access token'; documentation_url = 'https://docs.github.com'; status = '403' }
         Mock Invoke-GHRestMethod { return $errorResponse } -ModuleName ActionHelpers
 
@@ -1079,5 +1079,22 @@ Describe 'Get-MergeGroupReviewCoverage' {
 Describe 'Write-ActionNotice' {
     It 'Returns the notice workflow command with the message escaped' {
         Write-ActionNotice -Message "50% done`r`nnext" | Should -Be '::notice::50%25 done%0D%0Anext'
+    }
+}
+
+Describe 'action.ps1' {
+    It 'Authenticates and configures PowerShellForGitHub with -SessionOnly, so nothing is saved in the user profile' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'action.ps1'), [ref]$null, [ref]$null)
+        $calls = @($ast.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.CommandAst] -and
+                    $node.GetCommandName() -in @('Set-GitHubAuthentication', 'Set-GitHubConfiguration')
+                }, $true))
+
+        $calls.Count | Should -BeGreaterThan 0
+        foreach ($call in $calls) {
+            $parameterNames = @($call.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } | ForEach-Object ParameterName)
+            $parameterNames | Should -Contain 'SessionOnly' -Because "'$($call.Extent.Text)' would otherwise save to the user profile"
+        }
     }
 }

@@ -34,56 +34,41 @@ This Action is also helpful in increasing visibility for secrets that are detect
 
 1. For private and internal repositories, you must enable [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security).
 
-2. A GitHub Access Token with required permissions must be provided. See [token requirements](#token-requirements) below.
+2. A GitHub access token with the required permissions. See [Token Requirements](#token-requirements).
 
-## Supported GitHub instances
-
-The action works on github.com, [GitHub Enterprise Cloud with data residency](https://docs.github.com/en/enterprise-cloud@latest/admin/data-residency) (`*.ghe.com`), and GitHub Enterprise Server. The API endpoint is resolved from the runner-provided `GITHUB_API_URL` environment variable, so no additional configuration is required.
+The action works on github.com, [GitHub Enterprise Cloud with data residency](https://docs.github.com/en/enterprise-cloud@latest/admin/data-residency) (`*.ghe.com`), and GitHub Enterprise Server. The API endpoint is read from the runner-provided `GITHUB_API_URL` environment variable, so no additional configuration is required.
 
 ## Functionality
 
-### Commit Annontations
+### Commit annotations
 
 The Action adds a `Warning` annotation to any file in the pull request that has introduced a secret (based on the secret scanning alert's initial commit):
-![Secret Scanning Review Workflow File Annotation](https://user-images.githubusercontent.com/1760475/184815609-58dd4f31-dc08-445a-a692-3b5d4dacbaae.png)
+![Warning annotation on a file in the pull request](https://user-images.githubusercontent.com/1760475/184815609-58dd4f31-dc08-445a-a692-3b5d4dacbaae.png)
 
-Setting the workflow [`fail-on-alert`](#inputs) configuration value to `true` will change those `Warnings` into `Errors`:
-![Secret Scanning Review Workflow File Annotation](https://user-images.githubusercontent.com/1760475/185046387-576fb75b-8a68-4640-94bc-9966f1f3b721.png)
+With [`fail-on-alert: true`](#inputs), the annotations are `Errors`:
+![Error annotation on a file in the pull request](https://user-images.githubusercontent.com/1760475/185046387-576fb75b-8a68-4640-94bc-9966f1f3b721.png)
 
-### Status Check Failure
+The workflow's status check then fails, which provides a "trust, but verify" approach to secret scanning:
+![Failed status check on the pull request](https://user-images.githubusercontent.com/1760475/185046465-1924d71c-3e73-4269-94b9-e5bc283410f4.png)
 
-By adding `Error` annotations, new secret alerts will fail the workflow's status check, which provides a "trust, but verify" approach to secret scanning:
-![Secret Scanning Review Workflow Checks](https://user-images.githubusercontent.com/1760475/185046465-1924d71c-3e73-4269-94b9-e5bc283410f4.png)
+### Pull request job summary
 
-### Pull Request Job Summary
+The workflow run summary lists each secret introduced in the pull request with its status (🟡 warning or 🔴 error), alert, secret type, state, resolution, push protection bypass, validity (`active`, `inactive`, or `unknown`), and location (commit, pull request title or body, comment, review, or review comment). Hover over the state to see the status of a [dismissal request](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests), and over the validity to see when it was checked.
 
-The Action summarizes all secrets introduced in the pull request in the workflow run summary. The summary table includes:
+![Workflow summary of the secrets introduced in the pull request](https://github.com/user-attachments/assets/102b44ce-6f8d-4aa7-a57d-364673c25dc7)
 
-- **Status**: Whether the check passed (🟡 warning) or failed (🔴 error)
-- **Secret Alert**: Link to the alert details
-- **Secret Type**: The type of secret detected
-- **State**: Whether the alert is open or resolved. When a [dismissal request](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests) exists, hover over the state to see the dismissal request status (e.g., `pending`, `approved`, `denied`, `expired`, `completed`, `cancelled`).
-- **Resolution**: How the alert was resolved (if applicable)
-- **Push Bypass**: Whether push protection was bypassed
-- **Validity**: The validity status of the secret (`active`, `inactive`, or `unknown`). When available, hover over the status to see the date it was checked.
-- **Location**: Where the secret was found (commit, PR title/body, comment, etc.)
+### Pull request comments
 
-![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/102b44ce-6f8d-4aa7-a57d-364673c25dc7)
+By default, when any secrets are found, the Action also adds the summary as a comment to the pull request:
+![Summary comment on the pull request](https://github.com/user-attachments/assets/6b08949d-8d60-425e-99a2-ee30bd6735ce)
 
-### Pull Request Comments
-
-By default, when any secrets are found the Action will also add a comment to the pull request with a summary of the secrets introduced in the pull request:
-![Secret Scanning Review Workflow Checks](https://github.com/user-attachments/assets/6b08949d-8d60-425e-99a2-ee30bd6735ce)
-
-The Action keeps a single comment on the pull request and updates it on later runs. When a later run finds no secrets that originated from the pull request (for example, after the commit that introduced a secret was removed from the pull request), the comment is updated with the new summary, so it no longer lists them. A comment is never added to a pull request where no secrets were found. When no secrets were found but the review could not be fully completed (`fail-closed: false`, see [Handling API errors](#handling-api-errors)), a comment from an earlier run is left unchanged.
+The Action keeps a single comment and updates it on later runs, so it stops listing secrets that are no longer part of the pull request (for example, after the commit that introduced a secret was removed). It never adds a comment to a pull request where no secrets were found, and when no secrets were found but the review could not be completed (`fail-closed: false`, see [Handling API errors](#handling-api-errors)), it leaves a comment from an earlier run unchanged.
 
 ## Security Model Considerations
 
-- To be clear, this Action will surface secret scanning alerts to anyone with `Read` access to a repository. This level of visibility is consistent with the access needed to see any raw secrets already commited to the repository's commit history.
+- This Action surfaces secret scanning alerts to anyone with `Read` access to the repository, the same access needed to see the raw secrets already committed to its history.
 
-- By default, only users with the repository `Admin` role, users with the organization `Security manager` role, organization owners, _and the committer of the secret_, will be able to dismiss the alert.
-
-- If you do wish to give broader access to secret scanning alerts in the repository you might consider a [custom repository role configuration](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-peoples-access-to-your-organization-with-roles/about-custom-repository-roles#security). With a custom role you can choose to grant `View secret scanning results` or `Dismiss or reopen secret scanning results` on top of any of the base repository roles.
+- By default, only users with the repository `Admin` role, users with the organization `Security manager` role, organization owners, _and the committer of the secret_ can dismiss the alert. To give broader access, use a [custom repository role](https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-peoples-access-to-your-organization-with-roles/about-custom-repository-roles#security) that grants `View secret scanning results` or `Dismiss or reopen secret scanning results`.
 
 ## Configuration Options
 
@@ -91,82 +76,63 @@ The Action keeps a single comment on the pull request and updates it on later ru
 
 | Input | Required | Description | Default |
 | ----- | -------- | ----------- | ------- |
-| `token` | **Yes** | GitHub Access Token with required permissions. See [token requirements](#token-requirements) below. | - |
-| `fail-on-alert` | No | Fail the action workflow via non-zero exit code if a matching secret scanning alert is found. | `false` |
-| `fail-on-alert-exclude-closed` | No | Handle failure exit code / annotations as warnings if the alert is found and marked as closed (state: 'resolved'). | `false` |
-| `disable-pr-comment` | No | Disable the PR comment feature. | `false` |
-| `runtime` | No | Runtime to use for the action. Options: `powershell` or `python`. | `powershell` |
-| `skip-closed-alerts` | No | Only process open alerts. | `false` |
-| `disable-workflow-summary` | No | Disable the workflow summary markdown table output. | `false` |
-| `fail-closed` | No | Fail the workflow when a GitHub API error prevents a complete review (for example, the pull request, its commits, alerts, alert locations, or PR comments could not be read), or when a merge queue does not require each pull request to pass its own required checks (see [merge queues](#does-this-action-support-merge-queues)). When `false`, these errors are reported as warnings and listed in the workflow summary (and in the PR comment, when one is posted), and the review continues with the data that could be read. See [Handling API errors](#handling-api-errors). | `true` |
-| `python-http-proxy-url` | No | HTTP proxy URL for the python runtime. Example: `http://proxy.example.com:1234` | `""` |
-| `python-https-proxy-url` | No | HTTPS proxy URL for the python runtime. Example: `http://proxy.example.com:5678` | `""` |
-| `python-verify-ssl` | No | Enable/disable SSL verification for the python runtime. ⚠️ Disabling is NOT recommended for production. | `true` |
-| `python-skip-closed-alerts` | No | **DEPRECATED** - Use `skip-closed-alerts` instead. | `false` |
-| `python-disable-workflow-summary` | No | **DEPRECATED** - Use `disable-workflow-summary` instead. | `false` |
+| `token` | **Yes** | GitHub access token with the required permissions. See [Token Requirements](#token-requirements). | - |
+| `fail-on-alert` | No | Fail the workflow, with error annotations, if a matching secret scanning alert is found. | `false` |
+| `fail-on-alert-exclude-closed` | No | With `fail-on-alert`, report alerts that are closed (state: `resolved`) as warnings instead of failing. | `false` |
+| `fail-closed` | No | Fail the workflow when a GitHub API error, or a [merge queue](#does-this-action-support-merge-queues) that does not require each pull request to pass its own required checks, prevents a complete review. When `false`, these are reported as warnings. See [Handling API errors](#handling-api-errors). | `true` |
+| `skip-closed-alerts` | No | Only review open alerts. | `false` |
+| `disable-pr-comment` | No | Disable the PR comment. | `false` |
+| `disable-workflow-summary` | No | Disable the workflow summary. | `false` |
+| `runtime` | No | `powershell` or `python`. See [the runtime FAQ](#why-are-there-two-runtime-options-and-whats-the-difference). | `powershell` |
+| `python-http-proxy-url` | No | HTTP proxy URL for the `python` runtime. Example: `http://proxy.example.com:1234` | - |
+| `python-https-proxy-url` | No | HTTPS proxy URL for the `python` runtime. Example: `http://proxy.example.com:5678` | - |
+| `python-verify-ssl` | No | SSL verification for the `python` runtime. ⚠️ Disabling it is NOT recommended. | `true` |
+
+> [!NOTE]
+> v3 removed the deprecated `python-skip-closed-alerts` and `python-disable-workflow-summary` inputs. Use `skip-closed-alerts` and `disable-workflow-summary` instead.
 
 ### Outputs
 
 | Output   | Description |
 |----------|-------------|
-| `alerts` | JSON array containing details about the alerts detected in the PR. See [Step Output of Alert Metadata](#step-output-of-alert-metadata) for the JSON schema and example usage. |
+| `alerts` | JSON array with details about the alerts detected in the PR. See [Step Output of Alert Metadata](#step-output-of-alert-metadata). |
 
 ### Handling API errors
 
 Both runtimes handle GitHub API errors the same way, controlled by `fail-closed`:
 
-- **`fail-closed: true` (default)**: any API error that prevents a complete review fails the workflow. Use this when the action is a required status check, so an incomplete review never reports success.
-- **`fail-closed: false`**: API errors are reported as `warning` annotations and listed in the workflow summary, and the step does not fail because of them. Warnings are only included in the PR comment when matching alerts are found: when none are found, an incomplete review leaves a PR comment from an earlier run unchanged. Alerts that could still be evaluated are reported as usual, and `fail-on-alert` still fails the workflow when a matching alert is found. If a required lookup fails (the pull request, its commits, or the secret scanning alerts), the review ends early with an "incomplete" workflow summary, an empty `alerts` array (`[]`), and no PR comment.
+- **`fail-closed: true` (default)**: any API error that prevents a complete review fails the workflow, so an incomplete review never reports success. Use this when the action is a required status check.
+- **`fail-closed: false`**: API errors are reported as warnings and listed in the workflow summary (and in the PR comment, when one is posted), and the review continues with the data that could be read. `fail-on-alert` still applies to the alerts that were found. If the pull request, its commits, or the secret scanning alerts cannot be read, the review ends early as incomplete, with an empty `alerts` output (`[]`) and no PR comment.
 
-On `merge_group` events, a merge queue that does not require each pull request to pass its own required checks also prevents a complete review: it fails the workflow with `fail-closed: true`, and ends the review early as incomplete with `fail-closed: false`. An error reading that setting is handled like the other API errors. See [Does this action support merge queues?](#does-this-action-support-merge-queues).
+On `merge_group` events, a merge queue that does not require each pull request to pass its own required checks is handled the same way (see [merge queues](#does-this-action-support-merge-queues)). Configuration errors (a missing token, or an event other than `pull_request` or `merge_group`) always fail the workflow, and [dismissal request](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests) lookups never do.
 
-Regardless of `fail-closed`:
-
-- Configuration errors (missing token, or a workflow that is not running on a `pull_request` or `merge_group` event) always fail the workflow.
-- Looking up [dismissal requests](https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests) for the summary never fails the workflow.
-
-Secrets in pull request review comments are matched using the pull request number in the alert location's `html_url`, without an API call, so a pending or deleted review comment is only reported on the pull request it was posted on. When `html_url` is missing or not in the expected format, the review comment is read from the API instead. If it is not accessible (404, for example a pending or deleted review comment), it is counted as a matching alert with `fail-closed: true`, and skipped with a warning with `fail-closed: false`.
-
-Secrets in pull request comments are matched the same way, using the pull request number in the alert location's `html_url`, so a comment deleted after the secret was detected is still reported on the pull request it was posted on, and the pull request's comments are not listed. When `html_url` is missing or not in the expected format (for example, on older GitHub Enterprise Server versions), the pull request's comments are listed instead and the comment is matched by its ID, so a deleted comment is not matched.
+Secrets in pull request comments and review comments are matched by the pull request number in the alert location's `html_url`, without an API call, so a deleted comment (or a pending review comment) is still matched to the pull request it was posted on. When `html_url` is missing or not in the expected format (for example, on older GitHub Enterprise Server versions), the comment is looked up instead: a deleted pull request comment is then not matched, and a review comment that is not accessible (404) is counted as a match with `fail-closed: true`, and skipped with a warning with `fail-closed: false`.
 
 ### Token Requirements
 
-The `token` input requires a GitHub Access Token with the following permissions:
+The built-in [`GITHUB_TOKEN`](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) cannot read secret scanning alerts, whatever the workflow's `permissions`. Create a token (PAT or GitHub App) with the permissions below, store it as a secret, and pass it to the `token` input (see [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)).
 
-**Classic Tokens:**
+**Classic tokens:** the `repo` scope, or `public_repo` and `security_events` for public repositories. The `security_events` scope also enables the dismissal request status.
 
-- `repo` scope
-- For public repositories: `public_repo` + `security_events` scopes
-- The `security_events` scope also enables dismissal request status
+**Fine-grained tokens and GitHub Apps** (repository permissions):
 
-**Fine-grained Personal Access Tokens:**
+- [Secret scanning alerts](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-secret-scanning-alerts): **Read**
+- [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests): **Write**, or **Read** with `disable-pr-comment: true` (then not required for public repositories)
+- [Contents](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-contents): **Read** (recommended). Needed for the dismissal request status, and to review pull requests with more than 250 commits, which are read from the [compare](https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#compare-two-commits) endpoint. Without it, those pull requests fail the review, or are reported as incomplete with `fail-closed: false`.
 
-- **Read-Only**: [Secret Scanning Alerts](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-secret-scanning-alerts)
-- **Read-Only**: [Contents](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-contents) _(recommended: required for showing dismissal request status in the summary table, and for reviewing pull requests with more than 250 commits, which are read from the [compare](https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#compare-two-commits) endpoint. Without it, those pull requests fail the review, or are reported as incomplete when `fail-closed: false`)_
-- **Write**: [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests)
-  - If `disable-pr-comment: true`, only **Read-Only** [Pull requests](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-pull-requests) is required (not required for public repositories)
-
-On `merge_group` events, the action also reads the merge queue settings of the base branch. This does not need any additional permissions: see [how the setting is read](#how-the-setting-is-read).
-
-> [!NOTE]
-> The built-in Actions [GITHUB_TOKEN](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) cannot be used due to missing permissions on the `secret-scanning` API. You must generate a token (PAT or GitHub App) with the required permissions, add it as a secret in your repository, and assign the secret to the workflow parameter. See: [Granting additional permissions](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#granting-additional-permissions)
-
-<!-- -->
+On `merge_group` events, the merge queue settings are read without additional permissions (see [merge queues](#does-this-action-support-merge-queues)).
 
 > [!IMPORTANT]
-> When using a custom token (instead of the built-in `GITHUB_TOKEN`), the workflow's `permissions` block only affects the built-in `GITHUB_TOKEN`, not your custom token. If the action fails with permission errors when using a custom token, verify the token itself has the required scopes/permissions listed above – adjusting the workflow's `permissions` block will not help.
+> The workflow's `permissions` block only applies to the built-in `GITHUB_TOKEN`. If the action fails with permission errors, check the permissions of the token itself.
 
 <!-- -->
 
 > [!WARNING]
-> This token will have `sensitive` data access to return a list of plain text secrets detected in your organization/repository. A detected secret implies anyone with read repository access would have the same level of access to the leaked secret, which should be considered compromised.
+> This token can read the plain text of the secrets detected in the repository. Anyone with read access to the repository can also see a committed secret, so treat any detected secret as compromised.
 
 ## Example usage
 
-> [!NOTE]
-> Please keep in mind that you need a [GitHub Advanced Security](https://docs.github.com/en/enterprise-cloud@latest/get-started/learning-about-github/about-github-advanced-security) license if you're running this action on private repositories.
-
-1. Add a new YAML workflow to your `.github/workflows` folder:
+Add a workflow to your `.github/workflows` folder:
 
 ```yml
 name: 'Secret Scanning Review'
@@ -187,12 +153,7 @@ jobs:
 
 ### Step Output of Alert Metadata
 
-The Action provides a summary of the secrets introduced in the pull request as a step output variable, `alerts`. You can access this step output in subsequent steps in your workflow for any further processing that you would like to perform.
-
-> [!NOTE]
-> The `alerts` step output does NOT include secret values.
-
-An example of how to access this step output in your Actions workflow is shown below:
+The `alerts` step output is a JSON array with the metadata of each alert detected in the PR, for further processing in later steps. It does NOT include secret values.
 
 ```yaml
 [...]
@@ -203,18 +164,19 @@ An example of how to access this step output in your Actions workflow is shown b
     token: ${{ steps.app-token.outputs.token }}
     runtime: 'python'
 
-- name: 'Log alert metadata'
+- name: 'Log alert URLs'
   if: always()
-  run: |
-    echo ${{ steps.secret-alert-check.outputs.alerts }}
+  env:
+    ALERTS: ${{ steps.secret-alert-check.outputs.alerts }}
+  run: echo "$ALERTS" | jq -r '.[].html_url'
 ```
 
-The `alerts` variable is set to a JSON array with the following fields for each alert detected in the PR:
+Each alert has the following fields:
 
 - `number`: The ID of the alert
 - `secret_type`: The type of secret detected
 - `push_protection_bypassed`: Whether the alert was introduced in a commit that bypassed push protection
-- `push_protection_bypassed_by`: The user who bypassed push protection
+- `push_protection_bypassed_by`: The user who bypassed push protection (shortened in the example below)
 - `state`: The state of the alert
 - `resolution`: The resolution of the alert
 - `validity`: The validity status of the secret (`active`, `inactive`, `unknown`, or null if not yet checked)
@@ -222,7 +184,7 @@ The `alerts` variable is set to a JSON array with the following fields for each 
 - `html_url`: The URL to the alert in the GitHub UI
 - `dismissal_request_status`: The status of any dismissal request for the alert (e.g., `pending`, `approved`, `denied`, `expired`, `completed`, `cancelled`, or null if no request exists)
 
-An example of the `alerts` step output variable is shown below, where two different secrets were introduced in a PR:
+For example, when two different secrets were introduced in a PR:
 
 ```json
 [
@@ -245,23 +207,8 @@ An example of the `alerts` step output variable is shown below, where two differ
         "push_protection_bypassed_by": {
             "login": "CallMeGreg",
             "id": 110078080,
-            "node_id": "U_kgDOBo-ogA",
-            "avatar_url": "https://avatars.githubusercontent.com/u/110078080?v=4",
-            "gravatar_id": "",
-            "url": "https://api.github.com/users/CallMeGreg",
             "html_url": "https://github.com/CallMeGreg",
-            "followers_url": "https://api.github.com/users/CallMeGreg/followers",
-            "following_url": "https://api.github.com/users/CallMeGreg/following{/other_user}",
-            "gists_url": "https://api.github.com/users/CallMeGreg/gists{/gist_id}",
-            "starred_url": "https://api.github.com/users/CallMeGreg/starred{/owner}{/repo}",
-            "subscriptions_url": "https://api.github.com/users/CallMeGreg/subscriptions",
-            "organizations_url": "https://api.github.com/users/CallMeGreg/orgs",
-            "repos_url": "https://api.github.com/users/CallMeGreg/repos",
-            "events_url": "https://api.github.com/users/CallMeGreg/events{/privacy}",
-            "received_events_url": "https://api.github.com/users/CallMeGreg/received_events",
-            "type": "User",
-            "user_view_type": "public",
-            "site_admin": true
+            "type": "User"
         },
         "state": "resolved",
         "resolution": "false_positive",
@@ -273,149 +220,57 @@ An example of the `alerts` step output variable is shown below, where two differ
 ]
 ```
 
-## Architecture
+## How it works
 
-- A GitHub [composite action](https://docs.github.com/en/actions/creating-actions/creating-a-composite-action) wrapping a PowerShell script.
+The Action is a [composite action](https://docs.github.com/en/actions/creating-actions/creating-a-composite-action) that runs [`action.ps1`](action.ps1) (`powershell` runtime) or [`action.py`](action.py) (`python` runtime):
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Repo as Repository
-    participant PR as Pull Request
-    participant Action as Action Workflow
-    participant API_PR as pulls<br/><br/>REST API
-    participant API_SECRET as secret-scanning<br/><br/> REST API
+1. Reads the pull request number from `GITHUB_REF`: `refs/pull/:prNumber/merge`, or `refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha` on `merge_group` events, which also check the [merge queue settings](#does-this-action-support-merge-queues) of the base branch.
+2. Reads the pull request and its commits, and lists the repository's secret scanning alerts (provider patterns, then generic patterns).
+3. Lists the locations of each alert, and keeps the alerts with a location in the pull request: one of its commits, its title or body, or a comment, review, or review comment on it.
+4. Writes an annotation for each commit location, the workflow summary, the PR comment, and the `alerts` output, then fails the workflow if `fail-on-alert` applies.
 
-    Repo->>PR: Create/Update PR
-    PR->>Action: invoke `pull_request` workflow
-    Action->>API_PR: GET PR
-    Action->>API_PR: GET PR Commits
+It reads the runner-provided `GITHUB_REPOSITORY`, `GITHUB_REF`, `GITHUB_API_URL`, `GITHUB_GRAPHQL_URL`, and `GITHUB_SERVER_URL` environment variables, and writes to `GITHUB_STEP_SUMMARY` and `GITHUB_OUTPUT`. Neither runtime saves the token or its settings on the runner. It calls these GitHub APIs:
 
-    loop Commits
-        Action->>Action: Build PR Commit SHA list
-    end
+- REST
+  - [Pulls](https://docs.github.com/en/rest/pulls?apiVersion=2022-11-28): get the pull request, list its commits, and get a review or review comment
+  - [Compare two commits](https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#compare-two-commits): pull requests with more than 250 commits
+  - [Secret scanning](https://docs.github.com/en/rest/secret-scanning/secret-scanning?apiVersion=2022-11-28): list the alerts and their locations, and get [alert dismissal requests](https://docs.github.com/en/rest/secret-scanning/alert-dismissal-requests)
+  - [Issue comments](https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28): get a comment, and list, create, and update the PR comment
+  - [Rules for a branch](https://docs.github.com/en/rest/repos/rules?apiVersion=2022-11-28#get-rules-for-a-branch): `merge_group` events
+- GraphQL: [`repository.mergeQueue`](https://docs.github.com/en/graphql/reference/objects#repository): `merge_group` events, for a merge queue required by a branch protection rule
 
-    Action->>API_SECRET: GET Secret Scanning Alerts
+Dependencies:
 
-    loop Secret Scanning Alerts
-        Action->>API_SECRET: GET Secret Scanning Alert List Locations
-        loop Secret Scanning Alert Locations
-        Action->>Action:Build List of Alert Initial Location SHAs that are<br/>contained in the PR SHA List (Step 5)
-        end
-    end
-
-    loop List of matching PR/Alerts
-      loop List of Locations for matching PR/Alerts
-        Action->>PR:Writes an Annotation to the message log<br/>associated with the file and line/col number.<br/>(Error/Warning based on FailOnAlert setting)
-      end
-    end
-
-    Note right of PR: Annotations are visible<br/>on the PR Files changed rich diff
-
-    Action->>PR:Writes summary to PR comment and log.<br/>Returns success/failure exit code based on FailOnAlert setting.
-
-    Note right of PR: Fail workflow check<br/>based on FailOnAlert setting.
-```
-
-## Environment Variables
-
-- Implicit
-  - GITHUB_REPOSITORY - The owner / repository name.
-  - GITHUB_REF - The pull request ref. Supports both the `pull_request` event (`refs/pull/:prNumber/merge`) and the `merge_group` event used by [merge queues](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) (`refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha`). Both formats are matched from the start of the ref. For `merge_group` events, the base branch is also read from it to check the [merge queue settings](#does-this-action-support-merge-queues).
-  - GITHUB_GRAPHQL_URL - The GraphQL API URL of the GitHub instance the workflow runs on. Only used on `merge_group` events, to read the settings of a merge queue required by a branch protection rule. Derived from `GITHUB_API_URL` for local runs.
-  - GITHUB_SERVER_URL - The URL of the GitHub instance the workflow runs on. The `powershell` runtime links review comment locations in the summary to the alert location's `html_url`, and uses this URL to build the link when `html_url` is missing (for example, on older GitHub Enterprise Server versions). Defaults to `https://github.com` for local runs.
-
-- Outputs
-  - GITHUB_STEP_SUMMARY - Markdown for each job so that it will be displayed on the summary page of a workflow run (unique for each step in a job)
-
-## Dependencies
-
-- GitHub Dependencies
-  - GitHub [REST APIs](#rest-apis) and [GraphQL API](#graphql-api)
-
-- Powershell Dependencies (vendored in [`modules/`](modules); nothing is downloaded from the PowerShell Gallery at runtime)
-  - Versions are pinned in [`requirements.psd1`](requirements.psd1) (PSResourceGet [`-RequiredResourceFile`](https://learn.microsoft.com/powershell/module/microsoft.powershell.psresourceget/install-psresource) format)
-  - The SHA512 of each vendored package, and a digest of its extracted files, are recorded in [`requirements.lock.psd1`](requirements.lock.psd1). See [CONTRIBUTING.md](CONTRIBUTING.md#updating-powershell-module-dependencies) for the update flow.
-  - `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
-    - by [@microsoft](https://github.com/microsoft)
-    - NOTE: [Telemetry is collected via Application Insights](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry)
-  - `GitHubActions` ([Gallery](https://www.powershellgallery.com/packages/GitHubActions) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
-    - by [@ebekker](https://github.com/ebekker/)
-- Python Dependencies
-  - `requests` module
-
-## REST APIs
-
-- Pulls
-  - <https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#get-a-pull-request>
-  - <https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#list-commits-on-a-pull-request>
-  - <https://docs.github.com/en/rest/pulls/reviews?apiVersion=2022-11-28#list-reviews-for-a-pull-request>
-  - <https://docs.github.com/en/rest/pulls/comments?apiVersion=2022-11-28#get-a-review-comment-for-a-pull-request>
-
-- Commits
-  - <https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28#compare-two-commits> (used when a pull request has more than 250 commits)
-
-- Rules
-  - <https://docs.github.com/en/rest/repos/rules?apiVersion=2022-11-28#get-rules-for-a-branch> (used on `merge_group` events to read the merge queue settings of a ruleset)
-
-- Secret Scanning
-  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository>
-  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-locations-for-a-secret-scanning-alert>
-  - <https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning/alert-dismissal-requests#get-an-alert-dismissal-request-for-secret-scanning>
-- Comments
-  - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#get-an-issue-comment>
-  - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#update-an-issue-comment>
-  - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#create-an-issue-comment>
-  - <https://docs.github.com/en/rest/issues/comments?apiVersion=2022-11-28#list-issue-comments>
-
-## GraphQL API
-
-- [`repository.mergeQueue`](https://docs.github.com/en/graphql/reference/objects#repository) (`configuration { mergingStrategy }`): used on `merge_group` events to read the settings of a merge queue required by a branch protection rule
+- `powershell` runtime: [PowerShellForGitHub](https://github.com/microsoft/PowerShellForGitHub) (with telemetry disabled) and [GitHubActions](https://github.com/ebekker/pwsh-github-action-tools). They are vendored in [`modules/`](modules) at the versions pinned in [`requirements.psd1`](requirements.psd1), so nothing is downloaded from the PowerShell Gallery at runtime. See [CONTRIBUTING.md](CONTRIBUTING.md#updating-powershell-module-dependencies).
+- `python` runtime: [`requests`](https://pypi.org/project/requests/), installed with `pip` from the hash-pinned [`requirements.txt`](requirements.txt) on each run.
 
 ## FAQ
 
 ### Does this action support merge queues?
 
-Yes. In addition to the `pull_request` event, the action supports being triggered by the [`merge_group`](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#merge_group) event used by [merge queues](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue). Add `merge_group` to your workflow's `on:` triggers (see [Example usage](#example-usage)).
+Yes. Add the [`merge_group`](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#merge_group) event to your workflow's `on:` triggers (see [Example usage](#example-usage)). A [merge queue](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) tests a merge group with the base branch and every pull request ahead in the queue, but the merge group ref only names the last pull request, so that is the one the action reviews. Its commits are read from the pull request, so the merge queue's merge commit does not affect the review.
 
-#### Which pull request is reviewed
-
-A merge queue tests each pull request in a merge group that contains the base branch and every pull request ahead of it in the queue. The merge group ref (`refs/heads/gh-readonly-queue/:baseBranch/pr-:prNumber-:sha`) only names the last pull request in the group, and that is the pull request the action reviews. Its commits are read directly from the pull request via the Pulls API (independent of the ref), so the "is a secret scanning alert's initial commit part of this PR?" comparison is unaffected by the merge queue's merge commit.
-
-#### Why the merge queue grouping setting matters
-
-The pull requests ahead of the reviewed pull request are only covered when the merge queue requires each pull request to pass its own required checks: **Require all queue entries to pass required checks** in a ruleset, or **Only merge non-failing pull requests** in a branch protection rule (grouping strategy `ALLGREEN`). Each pull request must then pass its own merge group checks, where this action reviewed it, before it can merge. When the setting is off (`HEADGREEN`), a merge group merges all of its pull requests when the checks for the last one pass, so a pull request whose own merge group failed (for example, because this action found a secret) can be merged together with a later pull request that passes.
+The pull requests ahead of it are only covered when the merge queue requires each pull request to pass its own required checks: **Require all queue entries to pass required checks** in a ruleset, or **Only merge non-failing pull requests** in a branch protection rule (grouping strategy `ALLGREEN`). When it is off (`HEADGREEN`), a merge group merges all of its pull requests when the checks for the last one pass, so a pull request whose own merge group failed (for example, because this action found a secret) can merge together with a later pull request that passes.
 
 > [!IMPORTANT]
-> When this action is a required check in a merge queue, keep **Require all queue entries to pass required checks** (ruleset) or **Only merge non-failing pull requests** (branch protection rule) turned on.
+> When this action is a required check in a merge queue, keep that setting turned on.
 
-#### What the action does on `merge_group` events
-
-Before the review, the action reads this setting for the base branch. Both runtimes behave the same way:
+Before the review, both runtimes read the setting for the base branch:
 
 | Setting | Result |
 | ------- | ------ |
 | On (`ALLGREEN`) | The pull request is reviewed as usual. |
-| Off (`HEADGREEN`) | With `fail-closed: true` (default), the workflow fails with an error that explains the setting and how to turn it on. With `fail-closed: false`, a warning is reported and the review ends as incomplete (see [Handling API errors](#handling-api-errors)). |
-| Cannot be read with the token | A `notice` annotation is written and the pull request is reviewed as usual. |
-| Error reading the setting | Handled like other API errors: the workflow fails with `fail-closed: true`; with `fail-closed: false`, a warning is reported and the review continues. |
+| Off (`HEADGREEN`) | With `fail-closed: true` (default), the workflow fails with an error that explains how to turn the setting on. With `fail-closed: false`, a warning is reported and the review ends as incomplete. |
+| Cannot be read with the token | A notice is written and the pull request is reviewed as usual. |
+| Error reading the setting | Handled like other [API errors](#handling-api-errors). |
 
-No API call is made for this on `pull_request` events.
-
-#### How the setting is read
-
-No additional token permissions are required (see [Token Requirements](#token-requirements)):
-
-- **Ruleset**: the `grouping_strategy` of the `merge_queue` rule is read from the [get rules for a branch](https://docs.github.com/en/rest/repos/rules?apiVersion=2022-11-28#get-rules-for-a-branch) REST endpoint. It only needs the [`Metadata` (read)](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-metadata) permission that every token has, so the setting is checked with every supported token. When several rulesets require a merge queue for the branch, the setting is treated as off when any of them turns it off.
-- **Branch protection rule**: that endpoint does not list it, so the setting (`mergingStrategy`) is read from the merge queue configuration in the GraphQL API ([`repository.mergeQueue`](https://docs.github.com/en/graphql/reference/objects#repository)). GitHub only returns it when the token can read the merge queue settings, for example a classic token of a user with write access to the repository. Otherwise, the action writes a notice and reviews the pull request, so make sure the setting stays on.
+The setting is read without additional token permissions. For a ruleset, it is the `grouping_strategy` of the `merge_queue` rule returned by the [get rules for a branch](https://docs.github.com/en/rest/repos/rules?apiVersion=2022-11-28#get-rules-for-a-branch) endpoint, which only needs the [`Metadata`](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens?apiVersion=2022-11-28#repository-permissions-for-metadata) permission that every token has. When several rulesets require a merge queue for the branch, the setting is off if any of them turns it off. For a branch protection rule, it is the `mergingStrategy` of [`repository.mergeQueue`](https://docs.github.com/en/graphql/reference/objects#repository) in the GraphQL API, which GitHub only returns when the token can read the merge queue settings (for example, a classic token of a user with write access to the repository).
 
 ### Why are there two runtime options and what's the difference?
 
-The primary difference is the underlying language and the dependencies that are required to be installed on the runner.  The `powershell` runtime is the default and is the most tested.  The `python` runtime is a newer addition for those who may not have powershell installed on their self-hosted runners.
+Both runtimes review pull requests the same way. The `powershell` runtime is the default and the most tested, and it only needs `pwsh` on the runner, because its modules ship with the action. The `python` runtime is for self-hosted runners without PowerShell, and adds options for enterprise networks:
 
-The `powershell` runtime ships its PowerShell modules inside the action (see [Dependencies](#dependencies)), so it does not need access to the PowerShell Gallery and does not change the runner's PowerShell repository settings. It only needs `pwsh` on the runner.
+- **Proxy support**: `python-http-proxy-url` and `python-https-proxy-url`
+- **SSL verification control**: `python-verify-ssl` (for testing environments only)
 
-The `python` runtime includes some additional configuration options for enterprise environments:
-
-- **Proxy support**: Configure HTTP/HTTPS proxy settings for on-premises or corporate network environments (`python-http-proxy-url` and `python-https-proxy-url`)
-- **SSL verification control**: Disable SSL verification for testing environments (`python-verify-ssl`)
+In the summary, the `powershell` runtime links every alert location, while the `python` runtime only links commits.

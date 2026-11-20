@@ -8,9 +8,8 @@ project you agree to abide by its terms.
 
 Ensure your pull request adheres to the following guidelines:
 
-- Make sure you take care of this
-- And this as well
-- And don't forget to check this
+- Keep the `powershell` and `python` runtimes in parity, and update [`README.md`](README.md) when an input or behavior changes.
+- Add or update tests for the code you change, and run them: `Invoke-Pester -Path tests/Action_tests.ps1, tests/Sync-VendoredModules_tests.ps1 -ExcludeTagFilter SkipCI` and `pytest tests/test_action.py` (install the Python test dependencies with `pip install -r requirements-dev.txt`).
 
 Thank you for your suggestions!
 
@@ -39,19 +38,6 @@ To bump a module:
 
 You can also run `./scripts/Sync-VendoredModules.ps1` locally and commit the result in the same PR. Run `./scripts/Sync-VendoredModules.ps1 -Check` to verify (offline) that `modules/` and the lock file match `requirements.psd1` and that no vendored file was modified, added, or removed. The Release workflow runs the same check and refuses to publish on a mismatch. `.gitattributes` marks `modules/` as binary so git does not rewrite line endings in the vendored files.
 
-## Floating version tag
+## Releasing
 
-Once you have a tag and release using the semver version, the last remaining thing to do is to move the dynamic version
-identifier to match the current SHA. This allows users to adopt a
-major version number (e.g. `v2`) in their workflows while
-automatically getting all the
-minor/patch updates.
-
-To do this just checkout `main`, force-create a new annotated tag, and push it:
-
-```bash
-git checkout main
-git pull origin main
-git tag -fa v2 -m "Updating v2 to 2.2.3"
-git push origin v2 --force
-```
+Run the [Release](.github/workflows/release.yml) workflow with a `version` (for example `3.0.1`) or a `bump` (`patch`, `minor` or `major`). It verifies `modules/` (see above), tags the release (`vX.Y.Z`), moves the `vX` and `vX.Y` tags (except for pre-releases), creates the GitHub release, and opens a PR that updates the SHA-pinned `uses:` lines in the README.

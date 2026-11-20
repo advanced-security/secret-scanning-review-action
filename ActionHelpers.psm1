@@ -260,7 +260,7 @@ The pull request number.
 
 .PARAMETER apiBaseUrl
 The GitHub API base URL (e.g., https://api.github.com or https://api.<tenant>.ghe.com).
-Defaults to https://api.github.com for backwards compatibility.
+Defaults to https://api.github.com.
 
 .EXAMPLE
 Get-PullRequestComment -owner 'owner' -repo 'repo' -pullNumber 42
@@ -948,7 +948,7 @@ The secret scanning alert number.
 
 .PARAMETER apiBaseUrl
 The GitHub API base URL (e.g., https://api.github.com or https://api.<tenant>.ghe.com).
-Defaults to https://api.github.com for backwards compatibility.
+Defaults to https://api.github.com.
 
 .EXAMPLE
 Get-DismissalRequestForAlert -owner 'owner' -repo 'repo' -alertNumber 42
@@ -962,10 +962,8 @@ function Get-DismissalRequestForAlert {
         [string]$apiBaseUrl = 'https://api.github.com'
     )
 
-    # NOTE: Invoke-GHRestMethod does not throw on HTTP errors (e.g. 403/404).
-    # It returns the error response body as a PSObject with a 'message' property.
-    # See: https://github.com/microsoft/PowerShellForGitHub/wiki/Invoke-GHRestMethod
-    # Use -ExtendedResult if you need to inspect the HTTP status code directly.
+    # Invoke-GHRestMethod throws on HTTP errors (e.g. 403/404), which is handled below. A response with a
+    # 'message' property is an error body rather than a dismissal request, so it is also treated as none.
     try {
         $url = "$($apiBaseUrl.TrimEnd('/'))/repos/$owner/$repo/dismissal-requests/secret-scanning/$alertNumber"
         $response = Invoke-GHRestMethod -Method GET -Uri $url

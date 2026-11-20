@@ -1,42 +1,38 @@
 <#
 .SYNOPSIS
-Action to detect if a Secret Scanning alert is initially detected in a PR commit
+Reviews a pull request for secret scanning alerts that originated in it.
 
 .DESCRIPTION
-Features:
-- optional to fail via parameter (even if alert is resolved)
+Finds the secret scanning alerts with a location in the pull request (a commit, the title, the body, a comment, a review,
+or a review comment) and reports them as annotations, a workflow summary, a PR comment and the 'alerts' step output.
+Runs on 'pull_request' and 'merge_group' events.
 
 Requirements:
-- GITHUB_TOKEN with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
+- A token with access to the repository's secret scanning alerts (see the token requirements in the README).
+  The built-in GITHUB_TOKEN does not have this access.
 
 .EXAMPLE
-PS>gh auth login --scopes repo # <-- Easy to grab a local auth token to test with from here!6
-PS>Write-Host "initializing local run! Ensure you provide a valid GITHUB_TOKEN otherwise you will get a 401!!! "
-$VerbosePreference = 'SilentlyContinue'
-$env:GITHUB_TOKEN = gh auth token
-$env:GITHUB_REPOSITORY = 'octodemo/demo-vulnerabilities-ghas'
-$env:GITHUB_REF = 'refs/pull/120/merge'
-$env:GITHUB_STEP_SUMMARY = $(New-Item -Name /_temp/_runner_file_commands/step_summary_a01d8a3b-1412-4059-9cf1-f7c4b54cff76 -ItemType File -Force).FullName
-$env:SSR_FAIL_ON_ALERT = "true"
-$env:SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED = "true"
-PS> action.ps1
+PS> $env:GITHUB_TOKEN = gh auth token
+PS> $env:GITHUB_REPOSITORY = 'octo-org/octo-repo'
+PS> $env:GITHUB_REF = 'refs/pull/42/merge'
+PS> $env:GITHUB_STEP_SUMMARY = (New-Item -Path (Join-Path ([IO.Path]::GetTempPath()) 'step_summary.md') -ItemType File -Force).FullName
+PS> ./action.ps1 -FailOnAlert $true
 
-A simple example execution of the internal pwsh script against an Owner/Repo and Pull Request outside of GitHub Action context
+Reviews pull request #42 of octo-org/octo-repo outside of a workflow. The token and the PowerShellForGitHub settings are
+only kept in memory for this PowerShell session.
 
 .PARAMETER GitHubToken
-        GitHub Token with repo scope or security_events scope. For public repositories, you may instead use the public_repo scope.
-        NOTE: This is not required if the GITHUB_TOKEN environment variable is set.
+        GitHub token with access to the repository's secret scanning alerts (see the token requirements in the README).
+        NOTE: The GITHUB_TOKEN environment variable is used instead when it is set.
 
 .PARAMETER FailOnAlert
         If provided, will fail the action workflow via non-zero exit code if a matching secret scanning alert is found.
-        Additionaly, annotations will show as errors (vs default warnings).
+        Additionally, annotations will show as errors (vs default warnings).
         Default is false.
-        NOTE: Currently only works with GitHub Actions as an environment variable SSR_FAIL_ON_ALERT: true
 
 .PARAMETER FailOnAlertExcludeClosed
         If provided, will handle failure exit code / annotations as warnings if the alert is found and the alert is marked as closed (state: 'resolved').
         Default is false.
-        NOTE: Currently only works with GitHub Actions as an environment variable SSR_FAIL_ON_ALERT_EXCLUDE_CLOSED: true
 
 .PARAMETER FailClosed
         If true, any GitHub API error that prevents a complete review (pull request, commits, alerts, alert locations,
@@ -81,6 +77,8 @@ Dependencies
     - Module versions are pinned in requirements.psd1 (PSResourceGet required resource file format)
     - Modules are vendored in ./modules and imported by path; nothing is downloaded from the PowerShell Gallery at runtime
     - Refresh ./modules with scripts/Sync-VendoredModules.ps1 (the release workflow verifies they match via -Check)
+    - PowerShellForGitHub is authenticated and configured with -SessionOnly, so the token and settings are not saved
+      in the user profile of the runner (PowerShellForGitHub's accessToken.txt and config.json)
 
 Features
     - Actions compatible
@@ -96,17 +94,6 @@ Merge queues
     - The grouping strategy is read from the rulesets that apply to the base branch (REST, metadata permission), then
       from GraphQL (repository.mergeQueue) for a merge queue required by a branch protection rule. When the token cannot
       read it, a notice is written and the review continues. See Get-MergeGroupReviewCoverage in ActionHelpers.psm1.
-
-ToDo List
-   - filter out alerts that are before the first commit of the PR
-   - graphQL instead of iterating over rest api / or parallel api calls
-   - param vs env var (js script enhancement) ... ex's : https://docs.github.com/en/actions/security-guides/automatic-token-authentication#modifying-the-permissions-for-the-github_token
-
-Future Enhancements
-    - add summary comment to PR if alert is found (1 comment per PR even if multiple runs?)
-    - further options for FailOnAlert workflow bool
-        - whitelist of resolution types (false_positive, wont_fix, revoked, pattern_edited, pattern_deleted or used_in_tests) - via https://docs.github.com/en/enterprise-cloud@latest/rest/secret-scanning#list-secret-scanning-alerts-for-a-repository
-        - whitelist of secret types (https://docs.github.com/en/enterprise-cloud@latest/code-security/secret-scanning/secret-scanning-patterns#supported-secrets-for-advanced-security)
 
 .LINK
 https://github.com/advanced-security/secret-scanning-review-action
@@ -169,14 +156,11 @@ if ([String]::IsNullOrWhiteSpace($GitHubToken)) {
     Set-ActionFailed -Message "GitHubToken is not set"
 }
 
-#configure github module with authentication token ... sample code taken from example 2 for GitHub Action!
-#Get-Help Set-GitHubAuthentication -Examples
-
-# Allows you to specify your access token as a plain-text string ("<Your Access Token>")
-# which will be securely stored on the machine for use in all future PowerShell sessions.
+# Authenticate PowerShellForGitHub for this session only. Without -SessionOnly, the token is saved in the user profile
+# (accessToken.txt), where later jobs on a self-hosted runner could read it.
 $secureString = ($GitHubToken | ConvertTo-SecureString -AsPlainText -Force)
 $cred = New-Object System.Management.Automation.PSCredential "username is ignored", $secureString
-Set-GitHubAuthentication -Credential $cred
+Set-GitHubAuthentication -Credential $cred -SessionOnly
 
 $GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
@@ -206,8 +190,8 @@ if (-not $PullRequestNumber) {
     Set-ActionFailed -Message "Action workflow must be run on 'pull_request' or 'merge_group'.  GITHUB_REF is not set to a pull request number"
 }
 
-#Default Org / Repo for all GH api calls
-Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryName $RepositoryName
+# Default owner and repository for PowerShellForGitHub commands, for this session only (not saved to config.json)
+Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryName $RepositoryName -SessionOnly
 
 # Errors that were reported as warnings because FailClosed is disabled
 $evaluationWarnings = [System.Collections.Generic.List[string]]::new()
@@ -324,7 +308,7 @@ catch {
     # Provide helpful guidance - 99% of failures are due to using GITHUB_TOKEN which doesn't have secret scanning access
     Write-ActionInfo "NOTE: The built-in GITHUB_TOKEN does not have access to the secret scanning API."
     Write-ActionInfo "You must use a PAT with 'repo' scope, or a fine-grained PAT with 'secret_scanning_alerts:read' permission."
-    Write-ActionInfo "See: https://github.com/advanced-security/secret-scanning-review-action#token-permissions"
+    Write-ActionInfo "See: https://github.com/advanced-security/secret-scanning-review-action#token-requirements"
 
     # Try to get the X-Accepted-GitHub-Permissions header from the error response
     # Note: This header is only returned on 403 Forbidden responses. If the token lacks basic repo access,
@@ -388,7 +372,7 @@ $listPrComments = {
     return $script:prComments
 }
 
-#for each secret scanning alert, find the initial location of the secret and theh list
+#for each secret scanning alert, keep the locations that are in the PR
 $alertCount = 0
 $alertsInitiatedFromPr = @()
 foreach ($alert in $alerts) {
@@ -525,7 +509,7 @@ foreach ($alert in $alerts) {
 Write-Progress -Activity "Secret Scanning Alert Search" -Completed
 
 #Build output for each alert that was found
-#   * an Errror/Warning Actions annotation
+#   * an Error/Warning Actions annotation
 #   * add a step summary markdown table row of the alert details
 $numSecretsAlertsDetected = 0
 $numSecretsAlertLocationsDetected = 0
@@ -634,7 +618,6 @@ if ($DisableWorkflowSummary) {
 }
 else {
     $markdownSummary > $env:GITHUB_STEP_SUMMARY
-    #Get-Item -Path $env:GITHUB_STEP_SUMMARY | Show-Markdown
     Write-ActionDebug "Markdown Summary from env var GITHUB_STEP_SUMMARY: '$env:GITHUB_STEP_SUMMARY' "
     Write-ActionDebug $(Get-Content $env:GITHUB_STEP_SUMMARY)
 }
