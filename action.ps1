@@ -51,6 +51,13 @@ A simple example execution of the internal pwsh script against an Owner/Repo and
         Default is false.
 
 .NOTES
+Dependencies
+    - PowerShellForGitHub is authenticated and configured with -SessionOnly, so the token and settings are not saved
+      in the user profile of the runner (PowerShellForGitHub's accessToken.txt and config.json)
+    - PowerShellForGitHub telemetry and logging are disabled on every run with -DisableTelemetry and -DisableLogging, so
+      it does not write PowerShellForGitHub.log (a list of every API URL called and command run) in the user profile of
+      the runner
+
 Features
     - Actions compatible
         - GitHubActions module ( https://github.com/ebekker/pwsh-github-action-base)
@@ -111,10 +118,12 @@ if (Get-Module -ListAvailable -Name PowerShellForGitHub -ErrorAction SilentlyCon
 else {
     Write-ActionInfo "PowerShellForGitHub module is not installed.  Installing from Gallery..."
     Install-Module -Name PowerShellForGitHub -RequiredVersion '0.17.0'
-
-    #Disable Telemetry since we are accessing sensitive apis - https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry
-    Set-GitHubConfiguration -DisableTelemetry -SessionOnly
 }
+
+#Disable Telemetry since we are accessing sensitive apis - https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry
+#Disable logging before any other PowerShellForGitHub command, so no PowerShellForGitHub.log is written in the user profile - https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#logging
+#Runs even when the module was already installed, and -SessionOnly keeps these settings out of the user profile (config.json)
+Set-GitHubConfiguration -DisableTelemetry -DisableLogging -SessionOnly
 
 #check if GITHUB_TOKEN is set
 Write-ActionDebug "GitHubToken parameter is $([String]::IsNullOrWhiteSpace($GitHubToken) ? "NOT SET" : "SET" ). $($null -ne $env:GITHUB_TOKEN ? "Overridden by environment variable GITHUB_TOKEN" : $null)"
@@ -127,14 +136,11 @@ if ([String]::IsNullOrWhiteSpace($GitHubToken)) {
     Set-ActionFailed -Message "GitHubToken is not set"
 }
 
-#configure github module with authentication token ... sample code taken from example 2 for GitHub Action!
-#Get-Help Set-GitHubAuthentication -Examples
-
-# Allows you to specify your access token as a plain-text string ("<Your Access Token>")
-# which will be securely stored on the machine for use in all future PowerShell sessions.
+# Authenticate PowerShellForGitHub for this session only. Without -SessionOnly, the token is saved in the user profile
+# (accessToken.txt), where later jobs on a self-hosted runner could read it.
 $secureString = ($GitHubToken | ConvertTo-SecureString -AsPlainText -Force)
 $cred = New-Object System.Management.Automation.PSCredential "username is ignored", $secureString
-Set-GitHubAuthentication -Credential $cred
+Set-GitHubAuthentication -Credential $cred -SessionOnly
 
 $GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
@@ -158,8 +164,8 @@ else {
     Set-ActionFailed -Message "Action workflow must be run on 'pull_request'.  GITHUB_REF is not set to a pull request number"
 }
 
-#Default Org / Repo for all GH api calls
-Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryName $RepositoryName
+#Default Org / Repo for all GH api calls, for this session only (not saved to config.json)
+Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryName $RepositoryName -SessionOnly
 
 <# API: GET PR
     - docs: https://docs.github.com/en/enterprise-cloud@latest/rest/pulls/pulls#get-a-pull-request

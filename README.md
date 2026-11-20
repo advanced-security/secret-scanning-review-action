@@ -302,11 +302,12 @@ sequenceDiagram
 - Powershell Dependencies
   - `PowerShellForGitHub` ([Gallery](https://www.powershellgallery.com/packages/PowerShellForGitHub) / [Repo](https://github.com/Microsoft/PowerShellForGitHub)) - PowerShell wrapper for GitHub API
     - by [@microsoft](https://github.com/microsoft)
-    - NOTE: [Telemetry is collected via Application Insights](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry)
+    - NOTE: The action turns off PowerShellForGitHub [telemetry](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry) and [logging](https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#logging), and sets the token and settings for the PowerShell session only, so they are not saved in the runner user's profile
   - `GitHubActions` ([Gallery](https://www.powershellgallery.com/packages/GitHubActions) / [Repo](https://github.com/ebekker/pwsh-github-action-tools)) - PowerShell wrapper of the Github `@actions/core` [toolkit](https://github.com/actions/toolkit/tree/master/packages/core)
     - by [@ebekker](https://github.com/ebekker/)
 - Python Dependencies
   - `requests` module
+  - `certifi` 2026.10.18 or later and `urllib3` 2.8.0 or later (used by `requests`), for their security fixes
 
 ## REST APIs
 
