@@ -1081,3 +1081,20 @@ Describe 'Write-ActionNotice' {
         Write-ActionNotice -Message "50% done`r`nnext" | Should -Be '::notice::50%25 done%0D%0Anext'
     }
 }
+
+Describe 'action.ps1' {
+    It 'Authenticates and configures PowerShellForGitHub with -SessionOnly, so nothing is saved in the user profile' {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRoot 'action.ps1'), [ref]$null, [ref]$null)
+        $calls = @($ast.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.CommandAst] -and
+                    $node.GetCommandName() -in @('Set-GitHubAuthentication', 'Set-GitHubConfiguration')
+                }, $true))
+
+        $calls.Count | Should -BeGreaterThan 0
+        foreach ($call in $calls) {
+            $parameterNames = @($call.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.CommandParameterAst] } | ForEach-Object ParameterName)
+            $parameterNames | Should -Contain 'SessionOnly' -Because "'$($call.Extent.Text)' would otherwise save to the user profile"
+        }
+    }
+}

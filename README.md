@@ -229,7 +229,7 @@ The Action is a [composite action](https://docs.github.com/en/actions/creating-a
 3. Lists the locations of each alert, and keeps the alerts with a location in the pull request: one of its commits, its title or body, or a comment, review, or review comment on it.
 4. Writes an annotation for each commit location, the workflow summary, the PR comment, and the `alerts` output, then fails the workflow if `fail-on-alert` applies.
 
-It reads the runner-provided `GITHUB_REPOSITORY`, `GITHUB_REF`, `GITHUB_API_URL`, `GITHUB_GRAPHQL_URL`, and `GITHUB_SERVER_URL` environment variables, and writes to `GITHUB_STEP_SUMMARY` and `GITHUB_OUTPUT`. It calls these GitHub APIs:
+It reads the runner-provided `GITHUB_REPOSITORY`, `GITHUB_REF`, `GITHUB_API_URL`, `GITHUB_GRAPHQL_URL`, and `GITHUB_SERVER_URL` environment variables, and writes to `GITHUB_STEP_SUMMARY` and `GITHUB_OUTPUT`. Neither runtime saves the token or its settings on the runner. It calls these GitHub APIs:
 
 - REST
   - [Pulls](https://docs.github.com/en/rest/pulls?apiVersion=2022-11-28): get the pull request, list its commits, and get a review or review comment

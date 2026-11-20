@@ -18,8 +18,8 @@ PS> $env:GITHUB_REF = 'refs/pull/42/merge'
 PS> $env:GITHUB_STEP_SUMMARY = (New-Item -Path (Join-Path ([IO.Path]::GetTempPath()) 'step_summary.md') -ItemType File -Force).FullName
 PS> ./action.ps1 -FailOnAlert $true
 
-Reviews pull request #42 of octo-org/octo-repo outside of a workflow. Set-GitHubAuthentication also caches the token
-for future PowerShell sessions, so run Clear-GitHubAuthentication afterwards.
+Reviews pull request #42 of octo-org/octo-repo outside of a workflow. The token and the PowerShellForGitHub settings are
+only kept in memory for this PowerShell session.
 
 .PARAMETER GitHubToken
         GitHub token with access to the repository's secret scanning alerts (see the token requirements in the README).
@@ -77,6 +77,8 @@ Dependencies
     - Module versions are pinned in requirements.psd1 (PSResourceGet required resource file format)
     - Modules are vendored in ./modules and imported by path; nothing is downloaded from the PowerShell Gallery at runtime
     - Refresh ./modules with scripts/Sync-VendoredModules.ps1 (the release workflow verifies they match via -Check)
+    - PowerShellForGitHub is authenticated and configured with -SessionOnly, so the token and settings are not saved
+      in the user profile of the runner (PowerShellForGitHub's accessToken.txt and config.json)
 
 Features
     - Actions compatible
@@ -154,10 +156,11 @@ if ([String]::IsNullOrWhiteSpace($GitHubToken)) {
     Set-ActionFailed -Message "GitHubToken is not set"
 }
 
-# Authenticate PowerShellForGitHub. The token is also securely stored on the machine for use in future PowerShell sessions.
+# Authenticate PowerShellForGitHub for this session only. Without -SessionOnly, the token is saved in the user profile
+# (accessToken.txt), where later jobs on a self-hosted runner could read it.
 $secureString = ($GitHubToken | ConvertTo-SecureString -AsPlainText -Force)
 $cred = New-Object System.Management.Automation.PSCredential "username is ignored", $secureString
-Set-GitHubAuthentication -Credential $cred
+Set-GitHubAuthentication -Credential $cred -SessionOnly
 
 $GitHubToken = $secureString = $cred = $null # clear this out now that it's no longer needed
 
@@ -187,8 +190,8 @@ if (-not $PullRequestNumber) {
     Set-ActionFailed -Message "Action workflow must be run on 'pull_request' or 'merge_group'.  GITHUB_REF is not set to a pull request number"
 }
 
-#Default Org / Repo for all GH api calls
-Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryName $RepositoryName
+# Default owner and repository for PowerShellForGitHub commands, for this session only (not saved to config.json)
+Set-GitHubConfiguration -DefaultOwnerName $OrganizationName -DefaultRepositoryName $RepositoryName -SessionOnly
 
 # Errors that were reported as warnings because FailClosed is disabled
 $evaluationWarnings = [System.Collections.Generic.List[string]]::new()
