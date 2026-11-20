@@ -38,6 +38,10 @@ To bump a module:
 
 You can also run `./scripts/Sync-VendoredModules.ps1` locally and commit the result in the same PR. Run `./scripts/Sync-VendoredModules.ps1 -Check` to verify (offline) that `modules/` and the lock file match `requirements.psd1` and that no vendored file was modified, added, or removed. The Release workflow runs the same check and refuses to publish on a mismatch. `.gitattributes` marks `modules/` as binary so git does not rewrite line endings in the vendored files.
 
+## Updating Python dependencies
+
+The `python` runtime installs [`requirements.txt`](requirements.txt) with `pip install --require-hashes` on each run, and the tests use [`requirements-dev.txt`](requirements-dev.txt). Both are generated, so do not edit them by hand: list the direct dependencies in [`requirements.in`](requirements.in) or [`requirements-dev.in`](requirements-dev.in), then run the `uv pip compile` command from the header of the generated file (for example `uv pip compile --generate-hashes --output-file requirements.txt requirements.in`). Dependabot security updates regenerate both files from their `.in` file. Keep only `sha256` hashes, because `pip` rejects `md5` hashes.
+
 ## Releasing
 
 Run the [Release](.github/workflows/release.yml) workflow with a `version` (for example `3.0.1`) or a `bump` (`patch`, `minor` or `major`). It verifies `modules/` (see above), tags the release (`vX.Y.Z`), moves the `vX` and `vX.Y` tags (except for pre-releases), creates the GitHub release, and opens a PR that updates the SHA-pinned `uses:` lines in the README.
