@@ -79,6 +79,8 @@ Dependencies
     - Refresh ./modules with scripts/Sync-VendoredModules.ps1 (the release workflow verifies they match via -Check)
     - PowerShellForGitHub is authenticated and configured with -SessionOnly, so the token and settings are not saved
       in the user profile of the runner (PowerShellForGitHub's accessToken.txt and config.json)
+    - PowerShellForGitHub logging is disabled with -DisableLogging, so it does not write PowerShellForGitHub.log (a
+      list of every API URL called and command run) in the user profile of the runner
 
 Features
     - Actions compatible
@@ -143,7 +145,8 @@ foreach ($moduleName in ($requiredModules.Keys | Sort-Object)) {
 Import-Module (Join-Path $scriptPath 'ActionHelpers.psm1') -Force
 
 #Disable Telemetry and the Gallery update check since we are accessing sensitive apis - https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#telemetry
-Set-GitHubConfiguration -DisableTelemetry -DisableUpdateCheck -SessionOnly
+#Disable logging before any other PowerShellForGitHub command, so no PowerShellForGitHub.log is written in the user profile - https://github.com/microsoft/PowerShellForGitHub/blob/master/USAGE.md#logging
+Set-GitHubConfiguration -DisableTelemetry -DisableUpdateCheck -DisableLogging -SessionOnly
 
 #check if GITHUB_TOKEN is set
 Write-ActionDebug "GitHubToken parameter is $([String]::IsNullOrWhiteSpace($GitHubToken) ? "NOT SET" : "SET" ). $($null -ne $env:GITHUB_TOKEN ? "Overridden by environment variable GITHUB_TOKEN" : $null)"
