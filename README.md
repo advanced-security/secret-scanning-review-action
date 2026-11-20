@@ -143,7 +143,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 'Secret Scanning Review Action'
-        uses: advanced-security/secret-scanning-review-action@95d81b31e2f29d664f792cad47ce6df9a1cad663 # v3.0.0
+        uses: advanced-security/secret-scanning-review-action@283b36cf945c1c9729cc1331ac3049c23f5c836c # v3.0.1
         with:
           token: ${{ secrets.SECRET_SCAN_REVIEW_GITHUB_TOKEN }}
           fail-on-alert: true
@@ -158,7 +158,7 @@ The `alerts` step output is a JSON array with the metadata of each alert detecte
 ```yaml
 [...]
 - name: 'Secret Scanning Review Action'
-  uses: advanced-security/secret-scanning-review-action@95d81b31e2f29d664f792cad47ce6df9a1cad663 # v3.0.0
+  uses: advanced-security/secret-scanning-review-action@283b36cf945c1c9729cc1331ac3049c23f5c836c # v3.0.1
   id: secret-alert-check
   with:
     token: ${{ steps.app-token.outputs.token }}
